@@ -1,0 +1,36 @@
+﻿version: '3.8'
+
+services:
+  hrms-db:
+    image: mysql:8.0
+    container_name: hrms_mysql_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: u997632379_hrms
+      MYSQL_USER: hrms_user
+      MYSQL_PASSWORD: hrms_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - hrms_db_data:/var/lib/mysql
+
+  hrms-api:
+    build: .
+    container_name: hrms_backend_api
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - DB_HOST=hrms-db
+      - DB_USER=hrms_user
+      - DB_PASS=hrms_password
+      - DB_NAME=u997632379_hrms
+      - JWT_SECRET=superowner_hrms_secret_key_2026
+    depends_on:
+      - hrms-db
+
+volumes:
+  hrms_db_data:
