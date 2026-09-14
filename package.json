@@ -1,7 +1,8 @@
 {
   "name": "hrms-backend",
   "version": "1.0.0",
-  "description": "MySQL + Express backend for HRMS App",
+  "description": "Enterprise backend for HRMS App",
+  "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ITLC HRMS & CRM ENTERPRISE - COMPLETE SWAGGER API SPECIFICATION & DASHBOARD
  * Covers 100% of all features: Payroll, Attendance, Leaves, Tasks, Performance,
  * Assets, Meetings, Announcements, Expenses, Tickets, CRM, Payments & Super Owner.
@@ -2012,4 +2012,5 @@ function printServerBanner(port = 5000) {
   console.log("");
 }
 
-module.exports = { swaggerSpec, getSwaggerHtml, getDashboardHtml, printServerBanner };
+export { swaggerSpec, getSwaggerHtml, getDashboardHtml, printServerBanner };
+export default { swaggerSpec, getSwaggerHtml, getDashboardHtml, printServerBanner };

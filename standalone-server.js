@@ -380,6 +380,7 @@ function readDb() {
       coupons: Array.isArray(parsed.coupons) ? parsed.coupons : (defaultDb.coupons || []),
       holidays: Array.isArray(parsed.holidays) && parsed.holidays.length > 0 ? parsed.holidays : (defaultDb.holidays || []),
       leavePolicies: Array.isArray(parsed.leavePolicies) && parsed.leavePolicies.length > 0 ? parsed.leavePolicies : (defaultDb.leavePolicies || []),
+      auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : (defaultDb.auditLogs || []),
       globalSettings: (parsed.globalSettings && typeof parsed.globalSettings === 'object') ? parsed.globalSettings : defaultDb.globalSettings,
       users: Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : defaultDb.users
     };
@@ -906,15 +907,23 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     return;
   }
 
-  // 4. MULTI-TENANT COMPANIES API (/api/tenants & /api/superowner/companies)
-  if ((pathname === '/api/tenants' || pathname === '/api/superowner/companies') && req.method === 'GET') {
+  // 4. MULTI-TENANT COMPANIES API (/api/tenants & /api/superowner/companies & /api/companies)
+  const isCompanyEndpoint = (
+    pathname === '/api/tenants' || 
+    pathname === '/api/superowner/companies' || 
+    pathname === '/api/super-owner/companies' || 
+    pathname === '/api/companies' || 
+    pathname === '/api/admin/companies'
+  );
+
+  if (isCompanyEndpoint && req.method === 'GET') {
     const db = readDb();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, tenants: db.tenants || [], companies: db.tenants || [] }));
     return;
   }
 
-  if ((pathname === '/api/tenants' || pathname === '/api/superowner/companies') && req.method === 'POST') {
+  if (isCompanyEndpoint && req.method === 'POST') {
     try {
       const tenantData = await parseBody(req);
       const db = readDb();
@@ -937,6 +946,21 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
 
       const seatCount = Number(tenantData.seatLimit || tenantData.maxEmployees || tenantData.userSeatLimit || tenantData.staffCapacity || tenantData.employeesCount || defaultSeats);
       const storageGb = Number(tenantData.storageLimitGb || tenantData.storageLimit || defaultStorage);
+
+      const defaultModules = {
+        dashboard: true,
+        attendance: true,
+        leave: true,
+        payroll: true,
+        recruitment: true,
+        performance: true,
+        assets: true,
+        training: true,
+        expenses: true,
+        tickets: true,
+        crm: true,
+        ...(tenantData.features || tenantData.modulesEnabled || {})
+      };
 
       const newTenant = {
         id: compId,
@@ -965,6 +989,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         mrr: Number(tenantData.mrr || (planKey.includes('premium') ? 999 : planKey.includes('demo') ? 199 : 499)),
         password: adminPass,
         adminPassword: adminPass,
+        modulesEnabled: defaultModules,
         features: {
           crmDealsKanban: true,
           crmInvoicingGST: true,
@@ -976,7 +1001,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
           hrmsSalaryPayroll: true,
           hrmsShiftLeave: true,
           hrmsAssetsTraining: true,
-          ...(tenantData.features || tenantData.modulesEnabled || {})
+          ...defaultModules
         },
         ...tenantData,
         staffCapacity: seatCount,
@@ -1007,8 +1032,33 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
           password: adminPass
         };
         db.users = [adminUserObj, ...(db.users || []).filter(u => u.email?.toLowerCase() !== adminEmail)];
+
+        // Also ensure default Admin employee exists in db.employees
+        const adminEmpObj = {
+          id: Date.now(),
+          employeeId: 'EMP-001',
+          tenantId: compId,
+          companyId: compId,
+          name: adminName,
+          email: adminEmail,
+          role: 'Company Admin',
+          systemRole: 'Company Admin',
+          department: 'Management',
+          designation: 'Managing Director / Chief Admin',
+          status: 'Active',
+          phone: tenantData.phone || tenantData.adminPhone || '',
+          salary: '₹1,50,000',
+          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(adminName)}&background=4f46e5&color=fff`,
+          joiningDate: new Date().toISOString().split('T')[0],
+          employmentType: 'Full-Time Permanent',
+          documents: []
+        };
+        db.employees = [adminEmpObj, ...(db.employees || []).filter(e => (e.email || '').toLowerCase() !== adminEmail)];
       }
 
+      if (!Array.isArray(db.auditLogs)) {
+        db.auditLogs = [];
+      }
       db.auditLogs.unshift({
         id: Date.now(),
         action: "Tenant Onboarded",
@@ -1022,8 +1072,9 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       res.writeHead(201, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, tenant: newTenant, company: newTenant }));
     } catch (err) {
+      console.error('Failed to onboard tenant:', err);
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Failed to onboard tenant' }));
+      res.end(JSON.stringify({ error: 'Failed to onboard tenant: ' + (err.message || 'Unknown error') }));
     }
     return;
   }
