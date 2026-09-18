@@ -680,20 +680,29 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         return u;
       });
 
-      // 3. Update in db.tenants if tenant admin
-      db.tenants = (db.tenants || []).map(t => {
-        if ((email && (t.adminEmail || t.email || '').toLowerCase() === email) || (userId && String(t.id) === String(userId))) {
-          return {
-            ...t,
-            adminName: profData.name || profData.fullName || t.adminName,
-            adminPhone: profData.phone !== undefined ? profData.phone : t.adminPhone,
-            avatar: newAvatar !== undefined ? newAvatar : t.avatar,
-            logo: newAvatar !== undefined ? newAvatar : t.logo,
-            documents: newDocs !== null ? newDocs : (t.documents || [])
-          };
-        }
-        return t;
-      });
+      // 3. Update in db.tenants ONLY IF caller is the actual tenant admin (never for regular employees)
+      const isEmployeeRole = Boolean(
+        profData.isEmployee ||
+        (profData.role && String(profData.role).toLowerCase().includes('employee')) ||
+        (decoded?.role && String(decoded?.role).toLowerCase().includes('employee'))
+      );
+
+      if (!isEmployeeRole) {
+        db.tenants = (db.tenants || []).map(t => {
+          const isTenantAdminEmail = Boolean(email && (t.adminEmail || t.email || '').toLowerCase() === email);
+          if (isTenantAdminEmail) {
+            return {
+              ...t,
+              adminName: profData.name || profData.fullName || t.adminName,
+              adminPhone: profData.phone !== undefined ? profData.phone : t.adminPhone,
+              avatar: newAvatar !== undefined ? newAvatar : t.avatar,
+              logo: newAvatar !== undefined ? newAvatar : t.logo,
+              documents: newDocs !== null ? newDocs : (t.documents || [])
+            };
+          }
+          return t;
+        });
+      }
 
       db.auditLogs.unshift({
         id: Date.now(),
