@@ -115,8 +115,8 @@ const swaggerSpec = {
                 type: "object",
                 required: ["email", "password"],
                 properties: {
-                  email: { type: "string", example: "itlc@gmail.com" },
-                  password: { type: "string", example: "admin123" }
+                  email: { type: "string", example: "priyanshupushkar263@gmail.com" },
+                  password: { type: "string", example: "Priyanshu8090" }
                 }
               }
             }
@@ -157,10 +157,10 @@ const swaggerSpec = {
               schema: {
                 type: "object",
                 properties: {
-                  companyName: { type: "string", example: "ITLC Solutions" },
+                  companyName: { type: "string", example: "Acme Corporation" },
                   adminName: { type: "string", example: "Admin User" },
-                  adminEmail: { type: "string", example: "itlc@gmail.com" },
-                  adminPassword: { type: "string", example: "admin123" }
+                  adminEmail: { type: "string", example: "admin@acme.com" },
+                  adminPassword: { type: "string", example: "SecurePass@123" }
                 }
               }
             }
@@ -580,7 +580,7 @@ const swaggerSpec = {
                 properties: {
                   title: { type: "string", example: "Deploy Client Portal" },
                   description: { type: "string", example: "Configure SSL and automated CI/CD" },
-                  assignedTo: { type: "string", example: "emp@gmail.com" },
+                  assignedTo: { type: "string", example: "employee@example.com" },
                   priority: { type: "string", enum: ["Low", "Medium", "High"], example: "High" },
                   dueDate: { type: "string", example: "2026-09-30" }
                 }
@@ -609,7 +609,7 @@ const swaggerSpec = {
                 type: "object",
                 properties: {
                   title: { type: "string", example: "Implement Unit Tests" },
-                  assignedTo: { type: "string", example: "emp@gmail.com" },
+                  assignedTo: { type: "string", example: "employee@example.com" },
                   priority: { type: "string", example: "High" }
                 }
               }
@@ -1305,7 +1305,7 @@ function getSwaggerHtml(specUrl = '/api/swagger.json') {
       To test protected endpoints, login via <code>/api/auth/login</code>, copy the <code>token</code>, and click the green <strong>"Authorize"</strong> button below.
     </div>
     <div>
-      <strong>Default Admin:</strong> <code>itlc@gmail.com</code> | <code>admin123</code>
+      <strong>Super Owner:</strong> <code>priyanshupushkar263@gmail.com</code> | <code>Priyanshu8090</code>
     </div>
   </div>
 
@@ -1639,26 +1639,6 @@ function getDashboardHtml(serverInfo = {}) {
           <div class="cred-role">Platform Super Owner</div>
           <div class="cred-row">Email: <code>priyanshupushkar263@gmail.com</code></div>
           <div class="cred-row">Pass: <code>Priyanshu8090</code></div>
-        </div>
-        <div class="cred-item">
-          <div class="cred-role">System Admin</div>
-          <div class="cred-row">Email: <code>superowner@itlc.com</code></div>
-          <div class="cred-row">Pass: <code>admin</code></div>
-        </div>
-        <div class="cred-item">
-          <div class="cred-role">Company Admin</div>
-          <div class="cred-row">Email: <code>itlc@gmail.com</code></div>
-          <div class="cred-row">Pass: <code>admin123</code></div>
-        </div>
-        <div class="cred-item">
-          <div class="cred-role">Reporting Manager</div>
-          <div class="cred-row">Email: <code>manager@gmail.com</code></div>
-          <div class="cred-row">Pass: <code>man123</code></div>
-        </div>
-        <div class="cred-item">
-          <div class="cred-role">Standard Employee</div>
-          <div class="cred-row">Email: <code>emp@gmail.com</code></div>
-          <div class="cred-row">Pass: <code>emp123</code></div>
         </div>
       </div>
     </section>

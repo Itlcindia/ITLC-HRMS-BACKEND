@@ -92,199 +92,35 @@ const defaultDb = {
   system: "ITLC Enterprise Cloud Platform",
   version: "4.0-ENTERPRISE-PRO",
   lastUpdated: new Date().toISOString(),
-  tenants: [
-    {
-      id: "comp_1",
-      companyName: "Acme Global Technologies",
-      industry: "Information Technology",
-      plan: "growth",
-      suite: "unified",
-      billingCycle: "annual",
-      status: "active",
-      createdAt: "2026-01-15T10:00:00.000Z",
-      expiresAt: "2027-01-15T10:00:00.000Z",
-      adminName: "Rajesh Kumar",
-      adminEmail: "admin@acmeglobal.com",
-      adminPhone: "+91 98765 43210",
-      gstin: "07AAAAA0000A1Z5",
-      staffCapacity: 50,
-      activeUsers: 34,
-      mrr: 1999,
-      features: {
-        crmDealsKanban: true,
-        crmInvoicingGST: true,
-        crmGpsMeetings: true,
-        crmAiCopilot: true,
-        crmWhatsApp: true,
-        hrmsBiometricRadar: true,
-        hrmsMobileGpsPunch: true,
-        hrmsSalaryPayroll: true,
-        hrmsShiftLeave: true,
-        hrmsAssetsTraining: true
-      }
-    },
-    {
-      id: "comp_2",
-      companyName: "Apex Logistics India Pvt Ltd",
-      industry: "Supply Chain & Logistics",
-      plan: "enterprise",
-      suite: "unified",
-      billingCycle: "monthly",
-      status: "active",
-      createdAt: "2026-02-01T10:00:00.000Z",
-      expiresAt: "2026-09-20T10:00:00.000Z",
-      adminName: "Vikram Malhotra",
-      adminEmail: "vikram@apexlogistics.in",
-      adminPhone: "+91 98111 22334",
-      gstin: "27AABCA1234F1Z8",
-      staffCapacity: 200,
-      activeUsers: 142,
-      mrr: 4999,
-      features: {
-        crmDealsKanban: true,
-        crmInvoicingGST: true,
-        crmGpsMeetings: true,
-        crmAiCopilot: true,
-        crmWhatsApp: true,
-        hrmsBiometricRadar: true,
-        hrmsMobileGpsPunch: true,
-        hrmsSalaryPayroll: true,
-        hrmsShiftLeave: true,
-        hrmsAssetsTraining: true
-      }
-    }
-  ],
-  employees: [
-    { 
-      id: 1, 
-      tenantId: "comp_1",
-      name: 'Sarah Jenkins', 
-      email: 'sarah.j@acmeglobal.com', 
-      role: 'Senior UX Designer', 
-      department: 'Design', 
-      status: 'Active', 
-      phone: '+91 98765 01928', 
-      salary: '₹88,000', 
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80', 
-      documents: ['Profile_Photo.jpg', 'Aadhaar_Card.pdf', 'PAN_Card.pdf', 'Offer_Letter.pdf'] 
-    },
-    { 
-      id: 2, 
-      tenantId: "comp_1",
-      name: 'Michael Chang', 
-      email: 'm.chang@acmeglobal.com', 
-      role: 'Full Stack Engineer', 
-      department: 'Engineering', 
-      status: 'Active', 
-      phone: '+91 98765 03482', 
-      salary: '₹95,000', 
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', 
-      documents: ['Aadhaar_Card.pdf', 'Degree_Certificate.pdf'] 
-    }
-  ],
-  attendance: [
-    {
-      id: 1,
-      tenantId: "comp_1",
-      companyId: "comp_1",
-      employeeId: "1",
-      employeeName: "Sarah Jenkins",
-      date: new Date().toISOString().split('T')[0],
-      checkIn: "09:05:00",
-      checkOut: "",
-      workHours: "0 hrs",
-      breakDuration: "0 mins",
-      status: "Present"
-    }
-  ],
-  leaves: [
-    {
-      id: "leave_1",
-      tenantId: "comp_1",
-      employeeId: 1,
-      employeeName: "Sarah Jenkins",
-      type: "Annual Leave",
-      fromDate: "2026-09-15",
-      toDate: "2026-09-18",
-      totalDays: 4,
-      reason: "Family vacation",
-      status: "Approved",
-      appliedDate: "2026-09-01"
-    }
-  ],
+  tenants: [],
+  employees: [],
+  attendance: [],
+  leaves: [],
   expenses: [],
-  leads: [
-    { 
-      id: 101, 
-      tenantId: "comp_1",
-      name: "Acme Corp Deal", 
-      email: "procurement@acme.com", 
-      phone: "+91 98765 43210", 
-      company: "Acme Corp", 
-      value: 120000, 
-      status: "PROPOSAL", 
-      source: "LinkedIn", 
-      date: "2026-09-01", 
-      assignedRep: "Rajesh Sharma" 
-    },
-    { 
-      id: 102, 
-      tenantId: "comp_1",
-      name: "Global Health Systems", 
-      email: "contact@globalhealth.org", 
-      phone: "+91 91234 56789", 
-      company: "Global Health", 
-      value: 450000, 
-      status: "NEGOTIATION", 
-      source: "Website", 
-      date: "2026-09-03", 
-      assignedRep: "Amit Kumar" 
-    }
-  ],
+  leads: [],
   deals: [],
-  invoices: [
+  invoices: [],
+  tasks: [],
+  superOwners: [
     { 
-      id: "INV-2026-001", 
-      tenantId: "comp_1",
-      client: "Acme Global Tech", 
-      amount: 141600, 
-      gstAmount: 21600, 
-      date: "2026-09-01", 
-      dueDate: "2026-09-15", 
-      status: "PAID" 
-    }
-  ],
-  tasks: [
-    { 
-      id: 1, 
-      tenantId: "comp_1",
-      title: "Follow up with Acme Corp CFO regarding contract", 
-      date: "2026-09-10", 
-      priority: "HIGH", 
-      assignee: "Rajesh Sharma", 
-      completed: false 
+      id: 'SUP_PAPZ0YC', 
+      name: "Priyanshu Pushkar", 
+      email: "priyanshupushkar263@gmail.com", 
+      role: "Super Owner", 
+      status: "Active", 
+      password: "Priyanshu8090",
+      avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80"
     }
   ],
   users: [
     { 
-      id: 1, 
-      name: "Master SuperAdmin", 
-      email: "superadmin@itlccrm.com", 
-      role: "Super Admin", 
+      id: 'SUP_PAPZ0YC', 
+      name: "Priyanshu Pushkar", 
+      email: "priyanshupushkar263@gmail.com", 
+      role: "Super Owner", 
       status: "Active", 
-      avatar: "SA", 
-      passwordHash: initialAdmin.hash,
-      salt: initialAdmin.salt
-    },
-    { 
-      id: 2, 
-      name: "Admin", 
-      email: "admin@itlccrm.com", 
-      role: "Admin", 
-      status: "Active", 
-      avatar: "AD", 
-      passwordHash: initialAdmin.hash,
-      salt: initialAdmin.salt
+      avatar: "PP", 
+      password: "Priyanshu8090"
     }
   ],
   settings: {
@@ -293,8 +129,7 @@ const defaultDb = {
     gstRate: 18,
     defaultCommission: 10,
     monthlyTarget: 1000000,
-    autoAssignLeads: true,
-    masterPin: "1234"
+    autoAssignLeads: true
   },
   auditLogs: [
     { 
@@ -363,26 +198,27 @@ function readDb() {
     return { 
       ...defaultDb, 
       ...parsed,
-      tenants: Array.isArray(parsed.tenants) && parsed.tenants.length > 0 ? parsed.tenants : defaultDb.tenants,
-      employees: Array.isArray(parsed.employees) && parsed.employees.length > 0 ? parsed.employees : defaultDb.employees,
-      attendance: Array.isArray(parsed.attendance) ? parsed.attendance : defaultDb.attendance,
-      corrections: Array.isArray(parsed.corrections) ? parsed.corrections : (defaultDb.corrections || []),
-      leaves: Array.isArray(parsed.leaves) ? parsed.leaves : (defaultDb.leaves || []),
-      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : (defaultDb.tasks || []),
-      expenses: Array.isArray(parsed.expenses) ? parsed.expenses : (defaultDb.expenses || []),
-      tickets: Array.isArray(parsed.tickets) ? parsed.tickets : (defaultDb.tickets || []),
-      payroll: Array.isArray(parsed.payroll) ? parsed.payroll : (defaultDb.payroll || []),
-      announcements: Array.isArray(parsed.announcements) ? parsed.announcements : (defaultDb.announcements || []),
-      assets: Array.isArray(parsed.assets) ? parsed.assets : (defaultDb.assets || []),
-      assetRequests: Array.isArray(parsed.assetRequests) ? parsed.assetRequests : (defaultDb.assetRequests || []),
-      performance: Array.isArray(parsed.performance) ? parsed.performance : (defaultDb.performance || []),
-      meetings: Array.isArray(parsed.meetings) ? parsed.meetings : (defaultDb.meetings || []),
-      coupons: Array.isArray(parsed.coupons) ? parsed.coupons : (defaultDb.coupons || []),
+      tenants: Array.isArray(parsed.tenants) ? parsed.tenants : [],
+      employees: Array.isArray(parsed.employees) ? parsed.employees : [],
+      attendance: Array.isArray(parsed.attendance) ? parsed.attendance : [],
+      corrections: Array.isArray(parsed.corrections) ? parsed.corrections : [],
+      leaves: Array.isArray(parsed.leaves) ? parsed.leaves : [],
+      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
+      expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
+      tickets: Array.isArray(parsed.tickets) ? parsed.tickets : [],
+      payroll: Array.isArray(parsed.payroll) ? parsed.payroll : [],
+      announcements: Array.isArray(parsed.announcements) ? parsed.announcements : [],
+      assets: Array.isArray(parsed.assets) ? parsed.assets : [],
+      assetRequests: Array.isArray(parsed.assetRequests) ? parsed.assetRequests : [],
+      performance: Array.isArray(parsed.performance) ? parsed.performance : [],
+      meetings: Array.isArray(parsed.meetings) ? parsed.meetings : [],
+      coupons: Array.isArray(parsed.coupons) ? parsed.coupons : [],
       holidays: Array.isArray(parsed.holidays) && parsed.holidays.length > 0 ? parsed.holidays : (defaultDb.holidays || []),
       leavePolicies: Array.isArray(parsed.leavePolicies) && parsed.leavePolicies.length > 0 ? parsed.leavePolicies : (defaultDb.leavePolicies || []),
-      auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : (defaultDb.auditLogs || []),
+      auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
       globalSettings: (parsed.globalSettings && typeof parsed.globalSettings === 'object') ? parsed.globalSettings : defaultDb.globalSettings,
-      users: Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : defaultDb.users
+      users: Array.isArray(parsed.users) ? parsed.users : defaultDb.users,
+      superOwners: Array.isArray(parsed.superOwners) ? parsed.superOwners : defaultDb.superOwners
     };
   } catch (e) {
     return defaultDb;
@@ -516,14 +352,7 @@ const server = http.createServer(async (req, res) => {
 function isSuperRoleOrEmail(rawRole, rawEmail) {
   const role = (rawRole || '').toLowerCase().trim();
   const email = (rawEmail || '').toLowerCase().trim();
-  const superOwnerEmails = [
-    'superowner@itlc.com',
-    'superowner@itlc.cloud',
-    'owner@itlc.cloud',
-    'superadmin@itlc.cloud',
-    'superadmin@itlccrm.com'
-  ];
-  if (superOwnerEmails.includes(email) || email.includes('superowner') || email.includes('superadmin')) {
+  if (email === 'priyanshupushkar263@gmail.com') {
     return true;
   }
   if (
@@ -532,11 +361,9 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     role.includes('superadmin') || 
     role.includes('super admin') || 
     role.includes('super_admin') || 
-    role.includes('super-admin') || 
-    role === 'super owner' ||
-    role === 'super admin'
+    role.includes('super-admin')
   ) {
-    return true;
+    return email === 'priyanshupushkar263@gmail.com';
   }
   return false;
 }
@@ -555,43 +382,29 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       const email = (rawEmail || '').toLowerCase().trim();
       const db = readDb();
 
-      // Check Super Owner / Super Admin from hardcoded emails, db.superOwners, or db.users
-      const superOwnerEmails = [
-        'superowner@itlc.com',
-        'superowner@itlc.cloud',
-        'owner@itlc.cloud',
-        'superadmin@itlc.cloud',
-        'superadmin@itlccrm.com',
-        'priyanshupushkar263@gmail.com'
-      ];
-      const foundSoInDb = (db.superOwners || []).find(so => (so.email || '').toLowerCase().trim() === email) ||
-                          (db.users || []).find(u => (u.email || '').toLowerCase().trim() === email && isSuperRoleOrEmail(u.role, u.email));
+      // Check Super Owner / Super Admin: strictly priyanshupushkar263@gmail.com
+      const isSuperEmail = email === 'priyanshupushkar263@gmail.com';
+      const foundSoInDb = (db.superOwners || []).find(so => (so.email || '').toLowerCase().trim() === 'priyanshupushkar263@gmail.com');
 
-      if (superOwnerEmails.includes(email) || email.includes('superowner') || email.includes('superadmin') || foundSoInDb) {
-        let isPassValid = 
-          password === 'Priyanshu8090' ||
-          password.toLowerCase() === 'priyanshu8090' ||
-          password.toLowerCase() === 'admin' || 
-          password.toLowerCase() === 'admin@123' || 
-          password === 'Itlc@2026';
+      if (isSuperEmail) {
+        let isPassValid = password === 'Priyanshu8090';
         if (foundSoInDb) {
+          if (foundSoInDb.password && foundSoInDb.password === password) {
+            isPassValid = true;
+          }
           if (foundSoInDb.passwordHash && foundSoInDb.salt) {
             const computed = hashPassword(password, foundSoInDb.salt);
             if (computed.hash === foundSoInDb.passwordHash) isPassValid = true;
           }
-          if (foundSoInDb.password && (foundSoInDb.password === password || foundSoInDb.password.toLowerCase() === password.toLowerCase())) {
-            isPassValid = true;
-          }
         }
         if (isPassValid) {
-          const isPriyanshu = email === 'priyanshupushkar263@gmail.com';
           const soUser = {
-            id: foundSoInDb?.id || (isPriyanshu ? 'SUP_PAPZ0YC' : 'usr_superowner_master'),
-            name: foundSoInDb?.name || (isPriyanshu ? 'Priyanshu Pushkar' : 'Super Owner ITLC'),
-            email: email,
+            id: foundSoInDb?.id || 'SUP_PAPZ0YC',
+            name: foundSoInDb?.name || 'Priyanshu Pushkar',
+            email: 'priyanshupushkar263@gmail.com',
             role: 'Super Owner',
             status: 'Active',
-            avatar: foundSoInDb?.avatar || 'SO'
+            avatar: foundSoInDb?.avatar || 'PP'
           };
           const token = generateToken(soUser);
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -602,7 +415,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
             name: soUser.name,
             email: soUser.email,
             role: 'Super Owner',
-            message: 'Welcome back, Super Owner!'
+            message: 'Welcome back, Super Owner Priyanshu Pushkar!'
           }));
           return;
         }
@@ -717,21 +530,20 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     }
 
     const db = readDb();
-    const email = (decoded?.email || (isMockSuper ? 'superowner@itlc.com' : '')).toLowerCase().trim();
+    const email = (decoded?.email || (isMockSuper ? 'priyanshupushkar263@gmail.com' : '')).toLowerCase().trim();
     const userId = decoded?.id;
 
     // Check if Super Owner or Super Admin
-    if (isMockSuper || (decoded && isSuperRoleOrEmail(decoded.role, decoded.email)) || isSuperRoleOrEmail('', email)) {
-      const foundSo = (db.superOwners || []).find(so => (so.email || '').toLowerCase().trim() === email) ||
-                      (db.users || []).find(u => (u.email || '').toLowerCase().trim() === email && isSuperRoleOrEmail(u.role, u.email));
+    if (isMockSuper || (decoded && isSuperRoleOrEmail(decoded.role, decoded.email)) || email === 'priyanshupushkar263@gmail.com') {
+      const foundSo = (db.superOwners || []).find(so => (so.email || '').toLowerCase().trim() === 'priyanshupushkar263@gmail.com');
       const soUser = {
-        id: userId || foundSo?.id || 'usr_superowner_master',
-        name: decoded?.name || foundSo?.name || 'Super Owner ITLC',
-        fullName: decoded?.name || foundSo?.name || 'Super Owner ITLC',
-        email: email || foundSo?.email || 'superowner@itlc.com',
+        id: userId || foundSo?.id || 'SUP_PAPZ0YC',
+        name: 'Priyanshu Pushkar',
+        fullName: 'Priyanshu Pushkar',
+        email: 'priyanshupushkar263@gmail.com',
         role: 'Super Owner',
         status: 'Active',
-        avatar: foundSo?.avatar || 'SO',
+        avatar: foundSo?.avatar || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
         companyId: null,
         companyName: 'SUPEROWNER Platform HQ',
         documents: []
@@ -905,6 +717,102 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       res.end(JSON.stringify({ error: 'Failed to update profile' }));
     }
     return;
+  }
+
+  // 3.3 AUTH: CHANGE PASSWORD (/api/auth/change-password, /api/employee/change-password, /api/user/change-password)
+  if ((pathname === '/api/auth/change-password' || pathname === '/api/employee/change-password' || pathname === '/api/user/change-password') && req.method === 'POST') {
+    try {
+      const decoded = verifyToken(req.headers['authorization']);
+      const body = await parseBody(req);
+      const email = (body.email || decoded?.email || '').toLowerCase().trim();
+      const userId = body.id || decoded?.id;
+      const newPassword = (body.newPassword || body.password || '').trim();
+
+      if (!newPassword) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'New password is required' }));
+        return;
+      }
+
+      if (!email && !userId) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'User identifier (email or ID) required' }));
+        return;
+      }
+
+      const db = readDb();
+      const { hash: newHash, salt: newSalt } = hashPassword(newPassword);
+
+      // 1. Update in db.users
+      db.users = (db.users || []).map(u => {
+        if ((email && u.email?.toLowerCase() === email) || (userId && String(u.id) === String(userId))) {
+          return {
+            ...u,
+            password: newPassword,
+            adminPassword: newPassword,
+            passwordHash: newHash,
+            salt: newSalt
+          };
+        }
+        return u;
+      });
+
+      // 2. Update in db.tenants
+      db.tenants = (db.tenants || []).map(t => {
+        if ((email && (t.adminEmail || t.email || '').toLowerCase() === email) || (userId && String(t.id) === String(userId))) {
+          return {
+            ...t,
+            password: newPassword,
+            adminPassword: newPassword
+          };
+        }
+        return t;
+      });
+
+      // 3. Update in db.employees
+      db.employees = (db.employees || []).map(e => {
+        if ((email && e.email?.toLowerCase() === email) || (userId && String(e.id) === String(userId))) {
+          return {
+            ...e,
+            password: newPassword
+          };
+        }
+        return e;
+      });
+
+      // 4. Update in db.superOwners
+      db.superOwners = (db.superOwners || []).map(s => {
+        if ((email && s.email?.toLowerCase() === email) || (userId && String(s.id) === String(userId))) {
+          return {
+            ...s,
+            password: newPassword,
+            passwordHash: newHash,
+            salt: newSalt
+          };
+        }
+        return s;
+      });
+
+      db.auditLogs.unshift({
+        id: Date.now(),
+        action: "Password Changed",
+        detail: `Password updated for account: ${email || userId}`,
+        actor: email || "User",
+        category: "auth",
+        timestamp: new Date().toLocaleTimeString()
+      });
+
+      writeDb(db);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Password updated successfully' }));
+      return;
+    } catch (err) {
+      console.error('Failed to change password:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to update password: ' + err.message }));
+      return;
+    }
   }
 
   // 4. MULTI-TENANT COMPANIES API (/api/tenants & /api/superowner/companies & /api/companies)
@@ -1087,6 +995,148 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(tenant || {}));
     return;
+  }
+
+  // 4.011 UPDATE COMPANY SETTINGS API (/api/admin/company and /api/company)
+  if ((pathname === '/api/admin/company' || pathname === '/api/company') && (req.method === 'PUT' || req.method === 'POST')) {
+    try {
+      const updates = await parseBody(req);
+      const db = readDb();
+      const decoded = verifyToken(req.headers['authorization']);
+      const tokenEmail = (decoded?.email || '').toLowerCase().trim();
+      const compId = updates?.id || updates?.companyId || updates?.tenantId || parsedUrl.searchParams.get('companyId') || parsedUrl.searchParams.get('tenantId') || req.headers['x-tenant-id'] || decoded?.tenantId || decoded?.companyId;
+
+      let idx = (db.tenants || []).findIndex(t => 
+        (compId && (
+          String(t.id).toLowerCase() === String(compId).toLowerCase() || 
+          String(t.companyName || '').toLowerCase() === String(compId).toLowerCase() || 
+          String(t.name || '').toLowerCase() === String(compId).toLowerCase() ||
+          (t.adminEmail && t.adminEmail.toLowerCase() === String(compId).toLowerCase()) ||
+          (t.email && t.email.toLowerCase() === String(compId).toLowerCase())
+        )) ||
+        (tokenEmail && (
+          (t.adminEmail && t.adminEmail.toLowerCase() === tokenEmail) ||
+          (t.email && t.email.toLowerCase() === tokenEmail)
+        ))
+      );
+
+      if (idx === -1 && compId) {
+        idx = (db.tenants || []).findIndex(t => String(t.id).toLowerCase() === String(compId).toLowerCase() || String(t.name || '').toLowerCase() === String(compId).toLowerCase() || String(t.companyName || '').toLowerCase() === String(compId).toLowerCase());
+      }
+
+      if (idx === -1 && tokenEmail) {
+        const associatedUser = (db.users || []).find(u => (u.email || '').toLowerCase() === tokenEmail);
+        const associatedEmp = (db.employees || []).find(e => (e.email || '').toLowerCase() === tokenEmail);
+        const linkedCompId = associatedUser?.tenantId || associatedUser?.companyId || associatedEmp?.tenantId || associatedEmp?.companyId;
+        if (linkedCompId) {
+          idx = (db.tenants || []).findIndex(t => String(t.id).toLowerCase() === String(linkedCompId).toLowerCase());
+        }
+      }
+
+      if (idx === -1 && (db.tenants || []).length > 0) {
+        idx = 0;
+      }
+
+      if (idx !== -1) {
+        const existing = db.tenants[idx];
+        const newName = updates.name !== undefined ? updates.name : (updates.companyName !== undefined ? updates.companyName : (existing.companyName || existing.name));
+
+        let modulesEnabled = updates.modulesEnabled !== undefined ? updates.modulesEnabled : existing.modulesEnabled;
+        if (typeof modulesEnabled === 'string') {
+          try {
+            modulesEnabled = JSON.parse(modulesEnabled);
+          } catch (e) {}
+        }
+
+        const updatedTenant = {
+          ...existing,
+          ...updates,
+          id: existing.id,
+          name: newName || existing.name,
+          companyName: newName || existing.companyName,
+          logo: updates.logo !== undefined ? updates.logo : (updates.companyLogo !== undefined ? updates.companyLogo : existing.logo),
+          themeColor: updates.themeColor !== undefined ? updates.themeColor : existing.themeColor,
+          phone: updates.phone !== undefined ? updates.phone : (updates.adminPhone !== undefined ? updates.adminPhone : existing.phone),
+          adminPhone: updates.phone !== undefined ? updates.phone : (updates.adminPhone !== undefined ? updates.adminPhone : existing.adminPhone),
+          address: updates.address !== undefined ? updates.address : existing.address,
+          gst: updates.gst !== undefined ? updates.gst : (updates.gstin !== undefined ? updates.gstin : (existing.gst || existing.gstin)),
+          gstin: updates.gst !== undefined ? updates.gst : (updates.gstin !== undefined ? updates.gstin : (existing.gst || existing.gstin)),
+          currency: updates.currency !== undefined ? updates.currency : existing.currency,
+          lat: updates.lat !== undefined ? (updates.lat === '' || updates.lat === null ? null : Number(updates.lat)) : existing.lat,
+          lng: updates.lng !== undefined ? (updates.lng === '' || updates.lng === null ? null : Number(updates.lng)) : existing.lng,
+          radius: updates.radius !== undefined ? (updates.radius === '' || updates.radius === null ? 500 : Number(updates.radius)) : (existing.radius || 500),
+          workdayStart: updates.workdayStart !== undefined ? updates.workdayStart : existing.workdayStart,
+          workdayEnd: updates.workdayEnd !== undefined ? updates.workdayEnd : existing.workdayEnd,
+          branchHQCoordinates: updates.branchHQCoordinates !== undefined ? updates.branchHQCoordinates : existing.branchHQCoordinates,
+          razorpayKeyId: updates.razorpayKeyId !== undefined ? updates.razorpayKeyId : existing.razorpayKeyId,
+          razorpaySecret: updates.razorpaySecret !== undefined ? updates.razorpaySecret : existing.razorpaySecret,
+          stripeSecretKey: updates.stripeSecretKey !== undefined ? updates.stripeSecretKey : existing.stripeSecretKey,
+          modulesEnabled: modulesEnabled
+        };
+
+        db.tenants[idx] = updatedTenant;
+
+        // Synchronize company name in db.users & db.employees
+        if (newName) {
+          db.users = (db.users || []).map(u => {
+            if (String(u.tenantId) === String(existing.id) || String(u.companyId) === String(existing.id) || (existing.adminEmail && u.email?.toLowerCase() === existing.adminEmail.toLowerCase())) {
+              return { ...u, companyName: newName };
+            }
+            return u;
+          });
+          db.employees = (db.employees || []).map(e => {
+            if (String(e.tenantId) === String(existing.id) || String(e.companyId) === String(existing.id)) {
+              return { ...e, companyName: newName };
+            }
+            return e;
+          });
+          if (db.settings) {
+            db.settings.companyName = newName;
+          }
+        }
+
+        // Audit log
+        db.auditLogs.unshift({
+          id: Date.now(),
+          action: "Company Settings Updated",
+          detail: `Company settings for "${newName}" (${existing.id}) successfully updated and persisted.`,
+          actor: tokenEmail || existing.adminEmail || "Company Admin",
+          category: "company",
+          timestamp: new Date().toLocaleTimeString()
+        });
+
+        writeDb(db);
+
+        const resTenant = {
+          ...updatedTenant,
+          status: updatedTenant.status || updatedTenant.subscriptionStatus || 'active',
+          subscriptionStatus: updatedTenant.subscriptionStatus || updatedTenant.status || 'active',
+          subscriptionPlanId: updatedTenant.subscriptionPlanId || updatedTenant.planId || updatedTenant.plan || 'demo',
+          planId: updatedTenant.subscriptionPlanId || updatedTenant.planId || updatedTenant.plan || 'demo',
+          plan: updatedTenant.subscriptionPlanId || updatedTenant.planId || updatedTenant.plan || 'demo',
+          seatLimit: Number(updatedTenant.seatLimit || updatedTenant.maxEmployees || updatedTenant.staffCapacity || 50),
+          storageLimitGb: Number(updatedTenant.storageLimitGb || updatedTenant.storageLimit || 50)
+        };
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: true, 
+          message: 'Company settings updated successfully', 
+          company: resTenant, 
+          tenant: resTenant 
+        }));
+        return;
+      } else {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Company not found' }));
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to update company settings:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to update company settings: ' + err.message }));
+      return;
+    }
   }
 
   // 4.1 EMPLOYEES API (/api/employees and /api/admin/employees)
@@ -2463,22 +2513,11 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
   // 4.33.1 SUPEROWNER USER MANAGEMENT (/api/superowner/users & /api/superowner/create-superowner)
   if (pathname === '/api/superowner/users' && req.method === 'GET') {
     const db = readDb();
-    const defaultSoUsers = [
-      { id: 'usr_so_1', name: 'Super Owner ITLC', email: 'superowner@itlc.com', role: 'Super Owner', companyName: 'SUPEROWNER Platform', status: 'active', createdDate: '2025-01-01' },
-      { id: 'usr_admin_1', name: 'Priya Sharma (HR Admin)', email: 'priya@itlc.com', role: 'Company Admin', companyName: 'ITLC Enterprise Group', status: 'active', createdDate: '2025-01-15' },
-      { id: 'usr_mgr_1', name: 'Vikram Malhotra', email: 'vikram@apextech.io', role: 'Manager', companyName: 'Apex Technologies', status: 'active', createdDate: '2025-02-10' },
-      { id: 'usr_emp_1', name: 'Alex Rivera', email: 'alex@itlc.com', role: 'Employee', companyName: 'ITLC Enterprise Group', status: 'active', createdDate: '2025-03-01' },
-      { id: 'usr_sec_1', name: 'Sneha Patel', email: 'sneha@zenithcorp.com', role: 'Company Admin', companyName: 'Zenith Global Solutions', status: 'active', createdDate: '2025-03-12' }
-    ];
-    const existing = Array.isArray(db.superOwners) ? db.superOwners : [];
-    const combined = [...existing];
-    defaultSoUsers.forEach(d => {
-      if (!combined.some(u => u.email?.toLowerCase().trim() === d.email.toLowerCase().trim())) {
-        combined.push(d);
-      }
-    });
+    const existing = Array.isArray(db.superOwners) && db.superOwners.length > 0
+      ? db.superOwners
+      : [{ id: 'SUP_PAPZ0YC', name: 'Priyanshu Pushkar', email: 'priyanshupushkar263@gmail.com', role: 'Super Owner', companyName: 'SUPEROWNER Platform', status: 'active', createdDate: '2026-09-01' }];
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(combined));
+    res.end(JSON.stringify(existing));
     return;
   }
 
@@ -2605,15 +2644,15 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       const decoded = verifyToken(authHeader);
 
       const isSuperOwnerToken = (decoded && isSuperRoleOrEmail(decoded.role, decoded.email)) ||
-        tokenStr.includes('superowner') || tokenStr.includes('superadmin');
+        tokenStr.includes('priyanshupushkar263');
 
       if (isSuperOwnerToken) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
-          id: 'usr_superowner_master',
-          name: 'Super Owner ITLC',
-          fullName: 'Super Owner ITLC',
-          email: decoded?.email || 'superowner@itlc.com',
+          id: 'SUP_PAPZ0YC',
+          name: 'Priyanshu Pushkar',
+          fullName: 'Priyanshu Pushkar',
+          email: 'priyanshupushkar263@gmail.com',
           role: 'Super Owner',
           companyId: null,
           companyName: 'SUPEROWNER Platform HQ',
@@ -2977,10 +3016,62 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         message: 'Payment verified and tenant workspace provisioned successfully!' 
       }));
     } catch (err) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Verification failed' }));
     }
     return;
+  }
+
+  // 7.01 SUPEROWNER PAYMENTS API (/api/superowner/payments)
+  if ((pathname === '/api/superowner/payments' || pathname === '/api/payments') && req.method === 'GET') {
+    const db = readDb();
+    const payments = db.payments || [];
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(payments));
+    return;
+  }
+
+  if ((pathname === '/api/superowner/payments' || pathname === '/api/payments') && req.method === 'POST') {
+    try {
+      const payData = await parseBody(req);
+      const db = readDb();
+      if (!Array.isArray(db.payments)) db.payments = [];
+      
+      const newPay = {
+        id: payData.id || `pay_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        invoiceNumber: payData.invoiceNumber || `INV-${Date.now().toString().slice(-6)}`,
+        companyId: payData.companyId || 'comp_1',
+        companyName: payData.companyName || 'Enterprise Client',
+        amount: Number(payData.amount || 499),
+        currency: payData.currency || 'INR',
+        gateway: payData.gateway || 'razorpay',
+        status: payData.status || 'successful',
+        date: payData.date || new Date().toISOString().split('T')[0],
+        planId: payData.planId || 'starter',
+        planName: payData.planName || 'STARTER TIER',
+        paymentMethod: payData.paymentMethod || 'Razorpay Gateway UPI/Card',
+        transactionId: payData.transactionId || payData.razorpay_payment_id || `txn_${Date.now()}`
+      };
+
+      db.payments.unshift(newPay);
+
+      if (!Array.isArray(db.auditLogs)) db.auditLogs = [];
+      db.auditLogs.unshift({
+        id: Date.now(),
+        action: "Payment Received",
+        detail: `Received ${newPay.currency} ${newPay.amount} from "${newPay.companyName}" for ${newPay.planName} via ${newPay.gateway.toUpperCase()}.`,
+        actor: newPay.companyName,
+        category: "payment",
+        timestamp: new Date().toLocaleTimeString()
+      });
+
+      writeDb(db);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, payment: newPay }));
+      return;
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to record payment' }));
+      return;
+    }
   }
 
   // 7.1 SUPEROWNER GLOBAL SETTINGS API (/api/superowner/settings)

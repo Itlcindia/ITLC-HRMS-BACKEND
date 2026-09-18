@@ -126,24 +126,10 @@ router.post('/login', async (req, res) => {
   try {
     const cleanEmail = (email || '').toLowerCase().trim();
     const isPriyanshu = cleanEmail === 'priyanshupushkar263@gmail.com';
-    const isSuperOwnerEmail = 
-      isPriyanshu ||
-      cleanEmail === 'superowner@itlc.com' ||
-      cleanEmail === 'superowner@itlc.cloud' ||
-      cleanEmail === 'owner@itlc.cloud' ||
-      cleanEmail === 'superadmin@itlc.cloud' ||
-      cleanEmail === 'superadmin@itlccrm.com';
 
-    let isAuthorizedSuper = false;
-    if (isPriyanshu) {
-      isAuthorizedSuper = password === 'Priyanshu8090';
-    } else if (isSuperOwnerEmail) {
-      isAuthorizedSuper = password === 'admin' || password === 'Admin@123';
-    }
-
-    if (isSuperOwnerEmail && isAuthorizedSuper) {
+    if (isPriyanshu && password === 'Priyanshu8090') {
       const token = jwt.sign(
-        { id: 'usr_superowner_master', email: cleanEmail, role: 'Super Owner', companyId: null, name: isPriyanshu ? 'Priyanshu Pushkar' : 'Super Owner ITLC' },
+        { id: 'SUP_PAPZ0YC', email: cleanEmail, role: 'Super Owner', companyId: null, name: 'Priyanshu Pushkar' },
         process.env.JWT_SECRET || 'superowner_hrms_sec_vault_8f7b2c9e10a44d82b0f3e6a9821d3f9b2026',
         { expiresIn: '24h' }
       );
@@ -151,11 +137,11 @@ router.post('/login', async (req, res) => {
         success: true,
         token,
         role: 'Super Owner',
-        name: isPriyanshu ? 'Priyanshu Pushkar' : 'Super Owner ITLC',
+        name: 'Priyanshu Pushkar',
         email: cleanEmail,
         companyId: null,
         companyName: 'SUPEROWNER Platform HQ',
-        avatar: 'SO'
+        avatar: 'PP'
       });
     }
 
@@ -179,7 +165,6 @@ router.post('/login', async (req, res) => {
     } catch {}
     if (!isMatch && user.role === 'Super Owner') {
       if (user.email === 'priyanshupushkar263@gmail.com' && password === 'Priyanshu8090') isMatch = true;
-      else if (password === 'admin' || password === 'Admin@123') isMatch = true;
     }
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -223,18 +208,18 @@ router.post('/login', async (req, res) => {
 // Get profile
 router.get('/profile', auth(), async (req, res) => {
   try {
-    if (req.user && (req.user.role === 'Super Owner' || req.user.id === 'usr_superowner_master' || (req.user.email && (req.user.email.includes('superowner') || req.user.email.includes('superadmin') || req.user.email === 'priyanshupushkar263@gmail.com')))) {
+    if (req.user && (req.user.role === 'Super Owner' || req.user.id === 'SUP_PAPZ0YC' || req.user.email === 'priyanshupushkar263@gmail.com')) {
       return res.json({
-        id: req.user.id || 'usr_superowner_master',
-        name: req.user.name || (req.user.email === 'priyanshupushkar263@gmail.com' ? 'Priyanshu Pushkar' : 'Super Owner ITLC'),
-        email: req.user.email || 'superowner@itlc.com',
+        id: 'SUP_PAPZ0YC',
+        name: 'Priyanshu Pushkar',
+        email: 'priyanshupushkar263@gmail.com',
         role: 'Super Owner',
         status: 'Active',
-        avatar: 'SO',
+        avatar: 'PP',
         companyId: null,
         companyName: 'SUPEROWNER Platform HQ',
         department: 'Executive Leadership',
-        designation: 'Platform Administrator'
+        designation: 'Platform Administrator & Master Owner'
       });
     }
 
