@@ -3,17 +3,66 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 import swaggerDocs from './utils/swaggerDocs.js';
 const { swaggerSpec, getSwaggerHtml, getDashboardHtml, printServerBanner } = swaggerDocs;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load environment variables from .env
+dotenv.config({ path: path.join(__dirname, '.env') });
+
 const DB_FILE = path.join(__dirname, 'database.json');
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'itlc_crm_super_secure_enterprise_secret_2026';
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_live_Tb2olLw1YkeJRm';
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'giWCJ9bxC3NcUSfvQvr5dp2i';
+
+// Helper to dynamically update .env file(s)
+function updateEnvFile(updates) {
+  const envFiles = [
+    path.join(__dirname, '.env'),
+    path.join(__dirname, '..', 'frontend', '.env')
+  ];
+
+  for (const envPath of envFiles) {
+    try {
+      if (!fs.existsSync(envPath)) continue;
+      let content = fs.readFileSync(envPath, 'utf8');
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === undefined || value === null) continue;
+        process.env[key] = String(value);
+        const regex = new RegExp(`^${key}=.*$`, 'm');
+        if (regex.test(content)) {
+          content = content.replace(regex, `${key}=${value}`);
+        } else {
+          content += `\n${key}=${value}`;
+        }
+      }
+      fs.writeFileSync(envPath, content, 'utf8');
+    } catch (err) {
+      console.warn(`[ENV] Failed to update ${envPath}:`, err.message);
+    }
+  }
+}
+
+// Get active Razorpay Credentials dynamically from DB globalSettings or .env
+function getActiveRazorpayCredentials() {
+  let keyId = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || '';
+  let keySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '';
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+      if (db.globalSettings?.razorpayKeyId && db.globalSettings.razorpayKeyId.trim()) {
+        keyId = db.globalSettings.razorpayKeyId.trim();
+      }
+      if (db.globalSettings?.razorpaySecret && db.globalSettings.razorpaySecret.trim()) {
+        keySecret = db.globalSettings.razorpaySecret.trim();
+      }
+    }
+  } catch {}
+  return { keyId, keySecret };
+}
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -179,8 +228,8 @@ const defaultDb = {
     razorpayEnabled: true,
     paypalEnabled: true,
     stripeSecretKey: '',
-    razorpayKeyId: 'rzp_live_Tb2olLw1YkeJRm',
-    razorpaySecret: 'giWCJ9bxC3NcUSfvQvr5dp2i',
+    razorpayKeyId: process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_TZtOW3aeVNZT0s',
+    razorpaySecret: process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '6rG2BpqWUfYt7Buiz492jNCl',
     realUpiId: 'itlc@upi'
   }
 };
@@ -2958,12 +3007,11 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     return;
   }
 
-  // 7. PAYMENT GATEWAY API (/api/payments/create-order & verify)
-  if (pathname === '/api/payments/create-order' && req.method === 'POST') {
+  // 7. PAYMENT GATEWAY API (/api/payments/create-order & /api/payment/create-razorpay-order & verify)
+  if ((pathname === '/api/payments/create-order' || pathname === '/api/payment/create-razorpay-order' || pathname === '/api/payment/create-order' || pathname === '/api/payment/razorpay/order') && req.method === 'POST') {
     try {
-      const { planId, amount, currency = 'INR', companyName } = await parseBody(req);
-      const db = readDb();
-      const activeKey = db.globalSettings?.razorpayKeyId || RAZORPAY_KEY_ID;
+      const { planId, amount, currency = 'INR', companyName, customerEmail, customerPhone, customerName } = await parseBody(req);
+      const { keyId: activeKey } = getActiveRazorpayCredentials();
       const orderId = `order_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
       
       const order = {
@@ -2975,11 +3023,17 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         receipt: `rcpt_${Date.now()}`,
         status: 'created',
         key: activeKey,
-        notes: { planId, companyName }
+        notes: { 
+          planId: planId || 'starter', 
+          companyName: companyName || '', 
+          customerEmail: customerEmail || '', 
+          customerPhone: customerPhone || '',
+          customerName: customerName || ''
+        }
       };
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, order, key: activeKey }));
+      res.end(JSON.stringify({ success: true, order, orderId, key: activeKey }));
     } catch (err) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to create payment order' }));
@@ -2987,15 +3041,15 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     return;
   }
 
-  if (pathname === '/api/payments/verify' && req.method === 'POST') {
+  if ((pathname === '/api/payments/verify' || pathname === '/api/payment/verify') && req.method === 'POST') {
     try {
       const { razorpay_order_id, razorpay_payment_id, razorpay_signature, tenantData } = await parseBody(req);
       const db = readDb();
-      const activeSecret = db.globalSettings?.razorpaySecret || RAZORPAY_KEY_SECRET;
+      const { keySecret: activeSecret } = getActiveRazorpayCredentials();
       
       // Verification logic: In production, verify HMAC signature
       const expectedSign = crypto
-        .createHmac('sha256', activeSecret)
+        .createHmac('sha256', activeSecret || '')
         .update(`${razorpay_order_id}|${razorpay_payment_id}`)
         .digest('hex');
 
@@ -3086,8 +3140,15 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
   // 7.1 SUPEROWNER GLOBAL SETTINGS API (/api/superowner/settings)
   if (pathname === '/api/superowner/settings' && req.method === 'GET') {
     const db = readDb();
+    const { keyId, keySecret } = getActiveRazorpayCredentials();
+    const settings = {
+      ...(defaultDb.globalSettings || {}),
+      ...(db.globalSettings || {})
+    };
+    if (keyId) settings.razorpayKeyId = keyId;
+    if (keySecret) settings.razorpaySecret = keySecret;
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(db.globalSettings || defaultDb.globalSettings));
+    res.end(JSON.stringify(settings));
     return;
   }
 
@@ -3099,6 +3160,25 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         ...(db.globalSettings || defaultDb.globalSettings),
         ...updateData
       };
+
+      // Automatically sync Razorpay Key ID and Secret to .env file and process.env
+      if (updateData.razorpayKeyId !== undefined || updateData.razorpaySecret !== undefined) {
+        const envUpdates = {};
+        if (updateData.razorpayKeyId !== undefined) {
+          const cleanKey = String(updateData.razorpayKeyId).trim();
+          envUpdates.RAZORPAY_KEY_ID = cleanKey;
+          envUpdates.VITE_RAZORPAY_KEY_ID = cleanKey;
+          db.globalSettings.razorpayKeyId = cleanKey;
+        }
+        if (updateData.razorpaySecret !== undefined) {
+          const cleanSecret = String(updateData.razorpaySecret).trim();
+          envUpdates.RAZORPAY_KEY_SECRET = cleanSecret;
+          envUpdates.RAZORPAY_SECRET = cleanSecret;
+          db.globalSettings.razorpaySecret = cleanSecret;
+        }
+        updateEnvFile(envUpdates);
+      }
+
       writeDb(db);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, settings: db.globalSettings }));

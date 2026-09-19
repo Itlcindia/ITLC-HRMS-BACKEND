@@ -1,7 +1,7 @@
 {
   "system": "ITLC CRM",
   "version": "4.0-ENTERPRISE-PRO",
-  "lastUpdated": "2026-09-18T09:19:38.338Z",
+  "lastUpdated": "2026-09-19T09:12:48.195Z",
   "tenants": [
     {
       "id": "TEN-365",
@@ -648,8 +648,8 @@
     "razorpayEnabled": true,
     "paypalEnabled": true,
     "stripeSecretKey": "",
-    "razorpayKeyId": "rzp_live_Tb2olLw1YkeJRm",
-    "razorpaySecret": "giWCJ9bxC3NcUSfvQvr5dp2i",
+    "razorpayKeyId": "rzp_live_TZtOW3aeVNZT0s",
+    "razorpaySecret": "6rG2BpqWUfYt7Buiz492jNCl",
     "realUpiId": "itlc@upi"
   },
   "permissions": {
