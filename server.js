@@ -47,21 +47,30 @@ function updateEnvFile(updates) {
   }
 }
 
-// Get active Razorpay Credentials dynamically from DB globalSettings or .env
+// Get active Razorpay Credentials dynamically strictly from SuperOwner DB globalSettings first
 function getActiveRazorpayCredentials() {
-  let keyId = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || '';
-  let keySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '';
+  let keyId = '';
+  let keySecret = '';
   try {
     if (fs.existsSync(DB_FILE)) {
       const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-      if (db.globalSettings?.razorpayKeyId && db.globalSettings.razorpayKeyId.trim()) {
+      if (db.globalSettings?.razorpayKeyId && typeof db.globalSettings.razorpayKeyId === 'string' && db.globalSettings.razorpayKeyId.trim()) {
         keyId = db.globalSettings.razorpayKeyId.trim();
       }
-      if (db.globalSettings?.razorpaySecret && db.globalSettings.razorpaySecret.trim()) {
+      if (db.globalSettings?.razorpaySecret && typeof db.globalSettings.razorpaySecret === 'string' && db.globalSettings.razorpaySecret.trim()) {
         keySecret = db.globalSettings.razorpaySecret.trim();
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn('[Razorpay] Failed to read DB globalSettings:', err.message);
+  }
+  // Fallback to process.env ONLY if completely absent from SuperOwner globalSettings
+  if (!keyId) {
+    keyId = (process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || '').trim();
+  }
+  if (!keySecret) {
+    keySecret = (process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '').trim();
+  }
   return { keyId, keySecret };
 }
 
@@ -296,8 +305,8 @@ const defaultDb = {
     razorpayEnabled: true,
     paypalEnabled: true,
     stripeSecretKey: '',
-    razorpayKeyId: process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_TZtOW3aeVNZT0s',
-    razorpaySecret: process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '6rG2BpqWUfYt7Buiz492jNCl',
+    razorpayKeyId: (process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || '').trim(),
+    razorpaySecret: (process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '').trim(),
     realUpiId: 'itlc@upi'
   }
 };
@@ -4007,6 +4016,20 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Verification failed' }));
     }
+    return;
+  }
+
+  // 7.001 PUBLIC PAYMENT CONFIGURATION (/api/payment/config)
+  if (pathname === '/api/payment/config' && req.method === 'GET') {
+    const { keyId } = getActiveRazorpayCredentials();
+    const db = readDb();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: true,
+      razorpayKeyId: keyId,
+      currency: db.globalSettings?.currency || 'INR',
+      realUpiId: db.globalSettings?.realUpiId || 'itlc@upi'
+    }));
     return;
   }
 

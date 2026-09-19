@@ -1,31 +1,31 @@
 {
   "system": "ITLC CRM",
   "version": "4.0-ENTERPRISE-PRO",
-  "lastUpdated": "2026-09-19T09:12:48.195Z",
+  "lastUpdated": "2026-09-19T10:49:52.968Z",
   "tenants": [
     {
       "id": "TEN-365",
       "companyName": "Tech Solutions Private Limited",
       "name": "Tech Solutions Private Limited",
       "industry": "Information Technology",
-      "plan": "demo",
-      "planId": "demo",
+      "plan": "growth",
+      "planId": "growth",
       "suite": "unified",
       "billingCycle": "monthly",
       "status": "active",
       "createdAt": "2026-09-16T06:32:44.471Z",
-      "expiresAt": "2026-10-16T06:32:44.471Z",
+      "expiresAt": "2026-10-19T09:55:48.781Z",
       "adminName": "hr",
       "adminEmail": "j@gmail.com",
       "adminPhone": "+91 98765 43210",
       "gstin": "07AAAAA0000A1Z5",
-      "staffCapacity": 5,
-      "maxEmployees": 5,
-      "seatLimit": 5,
+      "staffCapacity": 50,
+      "maxEmployees": 50,
+      "seatLimit": 50,
       "userSeatLimit": 5,
       "employeesCount": 5,
-      "storageLimit": 2,
-      "storageLimitGb": 2,
+      "storageLimit": 50,
+      "storageLimitGb": 50,
       "activeUsers": 1,
       "mrr": 199,
       "password": "Admin@123",
@@ -81,7 +81,11 @@
       "razorpaySecret": "",
       "stripeSecretKey": "",
       "avatar": "J ",
-      "documents": []
+      "documents": [],
+      "subscriptionStatus": "active",
+      "paidAt": "2026-09-19T09:55:48.781Z",
+      "subscriptionPlanId": "growth",
+      "planName": "GROWTH"
     }
   ],
   "employees": [
@@ -143,7 +147,9 @@
       "adminPassword": "Admin@123",
       "phone": "+91 98765 43210",
       "photo": "J ",
-      "documents": []
+      "documents": [],
+      "subscriptionStatus": "active",
+      "subscriptionPlanId": "growth"
     },
     {
       "id": "SUP_PAPZ0YC",
@@ -176,6 +182,30 @@
     ]
   },
   "auditLogs": [
+    {
+      "id": 1789811748781,
+      "action": "Subscription Upgraded",
+      "detail": "Company Tech Solutions Private Limited purchased GROWTH (50 Seats, 50 GB).",
+      "actor": "j@gmail.com",
+      "category": "subscription",
+      "timestamp": "3:25:48 pm"
+    },
+    {
+      "id": 1789811748760,
+      "action": "Payment Verified",
+      "detail": "Payment pay_live_test_12345 verified for order order_TdqyZjDRvcxRJk",
+      "actor": "Payment Gateway",
+      "category": "payment",
+      "timestamp": "3:25:48 pm"
+    },
+    {
+      "id": 1789810842630,
+      "action": "Client Onboarded",
+      "detail": "\"Unpaid Preview Corp\" subscribed to STARTER plan. Payment verified.",
+      "actor": "Unpaid Preview Corp Admin",
+      "category": "subscription",
+      "timestamp": "3:10:42 pm"
+    },
     {
       "id": "log_mr1j9yj",
       "action": "Database Backup Archive",
@@ -719,6 +749,35 @@
     }
   ],
   "payments": [
+    {
+      "id": "PAY-1789811748781",
+      "invoiceNumber": "INV-748781",
+      "companyId": "TEN-365",
+      "companyName": "Tech Solutions Private Limited",
+      "amount": 999,
+      "currency": "INR",
+      "gateway": "razorpay",
+      "status": "successful",
+      "planId": "growth",
+      "planName": "GROWTH",
+      "transactionId": "pay_live_test_12345",
+      "date": "2026-09-19T09:55:48.781Z",
+      "createdAt": "2026-09-19T09:55:48.781Z"
+    },
+    {
+      "id": "pay_1789810842630",
+      "invoiceNumber": "INV-842630",
+      "companyId": "comp_1789810842629",
+      "companyName": "Unpaid Preview Corp",
+      "amount": 499,
+      "currency": "INR",
+      "gateway": "razorpay",
+      "status": "successful",
+      "date": "2026-09-19",
+      "planId": "starter",
+      "planName": "STARTER TIER",
+      "transactionId": "txn_1789810842630"
+    },
     {
       "id": "PAY-1789541853662",
       "invoiceNumber": "INV-853662",
