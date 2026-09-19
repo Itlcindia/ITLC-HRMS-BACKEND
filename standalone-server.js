@@ -3252,11 +3252,105 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         return;
       }
 
+      // Immediately activate company subscription & unlock all features
+      const decoded = verifyToken(req.headers['authorization']);
+      const tokenEmail = (decoded?.email || '').toLowerCase().trim();
+      const tokenComp = (decoded?.tenantId || decoded?.companyId || '').toLowerCase().trim();
+      const compTarget = String(body.companyId || body.tenantId || req.headers['x-tenant-id'] || tokenComp || tokenEmail || '').toLowerCase().trim();
+
+      let tenantIdx = (db.tenants || []).findIndex(t => 
+        (compTarget && (
+          String(t.id || '').toLowerCase().trim() === compTarget || 
+          String(t.adminEmail || '').toLowerCase().trim() === compTarget ||
+          String(t.email || '').toLowerCase().trim() === compTarget ||
+          String(t.companyName || '').toLowerCase().trim() === compTarget ||
+          String(t.name || '').toLowerCase().trim() === compTarget
+        )) ||
+        (tokenEmail && (
+          String(t.adminEmail || '').toLowerCase().trim() === tokenEmail ||
+          String(t.email || '').toLowerCase().trim() === tokenEmail
+        ))
+      );
+
+      if (tenantIdx === -1 && tokenEmail) {
+        const associatedUser = (db.users || []).find(u => (u.email || '').toLowerCase() === tokenEmail);
+        const linkedCompId = associatedUser?.tenantId || associatedUser?.companyId;
+        if (linkedCompId) {
+          tenantIdx = (db.tenants || []).findIndex(t => String(t.id).toLowerCase() === String(linkedCompId).toLowerCase());
+        }
+      }
+      if (tenantIdx === -1 && (db.tenants || []).length > 0) {
+        tenantIdx = 0;
+      }
+
+      const planId = body.planId || body.plan || 'starter';
+      const plan = (db.subscriptionPlans || []).find(p => p.id === planId) || {
+        id: planId,
+        name: String(planId).toUpperCase(),
+        seatLimit: 50,
+        storageLimitGb: 50,
+        priceMonthly: 499
+      };
+      const seatLimit = Number(plan.seatLimit || plan.employeeLimit || 50);
+      const storageLimitGb = Number(plan.storageLimitGb || plan.storageLimit || 50);
+      const planName = plan.name || String(planId).toUpperCase();
+      const price = Number(body.amount || plan.priceMonthly || plan.price || 499);
+      const paidDateIso = new Date().toISOString();
+
+      if (tenantIdx !== -1) {
+        db.tenants[tenantIdx] = {
+          ...db.tenants[tenantIdx],
+          status: 'active',
+          subscriptionStatus: 'active',
+          subscriptionPlanId: plan.id,
+          planId: plan.id,
+          plan: plan.id,
+          planName: planName,
+          seatLimit: seatLimit,
+          maxEmployees: seatLimit,
+          staffCapacity: seatLimit,
+          storageLimitGb: storageLimitGb,
+          storageLimit: storageLimitGb,
+          paidAt: paidDateIso,
+          lastPayment: paidDateIso,
+          transactionId: razorpay_payment_id || `TXN-${Date.now()}`,
+          expiresAt: new Date(Date.now() + 30 * 86400000).toISOString()
+        };
+
+        const tId = String(db.tenants[tenantIdx].id);
+        const tEmail = String(db.tenants[tenantIdx].adminEmail || db.tenants[tenantIdx].email || '').toLowerCase().trim();
+        (db.users || []).forEach(u => {
+          if (String(u.tenantId) === tId || String(u.companyId) === tId || (u.email && u.email.toLowerCase().trim() === tEmail)) {
+            u.subscriptionStatus = 'active';
+            u.subscriptionPlanId = plan.id;
+          }
+        });
+      }
+
+      const invoiceId = `INV-${Date.now().toString().slice(-6)}`;
+      db.payments = db.payments || [];
+      const paymentRecord = {
+        id: razorpay_payment_id || `PAY-${Date.now()}`,
+        invoiceNumber: invoiceId,
+        companyId: tenantIdx !== -1 ? db.tenants[tenantIdx].id : (compTarget || 'comp_active'),
+        companyName: (tenantIdx !== -1 ? (db.tenants[tenantIdx].companyName || db.tenants[tenantIdx].name) : null) || compTarget || 'ITLC Client',
+        amount: price,
+        currency: body.currency || 'INR',
+        gateway: 'razorpay',
+        status: 'successful',
+        planId: plan.id,
+        planName: planName,
+        transactionId: razorpay_payment_id || `TXN-${Date.now()}`,
+        date: paidDateIso,
+        createdAt: paidDateIso
+      };
+      db.payments.unshift(paymentRecord);
+
       db.auditLogs.unshift({
         id: Date.now(),
-        action: "Payment Verified",
-        detail: `Payment ${razorpay_payment_id || 'approved'} verified for order ${razorpay_order_id || 'N/A'}`,
-        actor: "Payment Gateway",
+        action: "Payment Verified & Subscription Activated",
+        detail: `Payment ${razorpay_payment_id || 'approved'} verified for order ${razorpay_order_id || 'N/A'}. Subscription activated for ${tenantIdx !== -1 ? db.tenants[tenantIdx].companyName : 'company'}.`,
+        actor: (tenantIdx !== -1 ? db.tenants[tenantIdx].adminEmail : null) || "Payment Gateway",
         category: "payment",
         timestamp: new Date().toLocaleTimeString()
       });
@@ -3268,7 +3362,9 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         verified: true, 
         paymentId: razorpay_payment_id,
         orderId: razorpay_order_id,
-        message: 'Payment verified and tenant workspace provisioned successfully!' 
+        company: tenantIdx !== -1 ? db.tenants[tenantIdx] : null,
+        payment: paymentRecord,
+        message: 'Payment verified and subscription activated successfully!' 
       }));
     } catch (err) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -3313,7 +3409,8 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
           String(t.id || '').toLowerCase().trim() === compTarget || 
           String(t.adminEmail || '').toLowerCase().trim() === compTarget ||
           String(t.email || '').toLowerCase().trim() === compTarget ||
-          String(t.companyName || '').toLowerCase().trim() === compTarget
+          String(t.companyName || '').toLowerCase().trim() === compTarget ||
+          String(t.name || '').toLowerCase().trim() === compTarget
         )) ||
         (tokenEmail && (
           String(t.adminEmail || '').toLowerCase().trim() === tokenEmail ||
@@ -3328,7 +3425,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
           tenantIdx = (db.tenants || []).findIndex(t => String(t.id).toLowerCase() === String(linkedCompId).toLowerCase());
         }
       }
-      if (tenantIdx === -1 && (db.tenants || []).length === 1) {
+      if (tenantIdx === -1 && (db.tenants || []).length > 0) {
         tenantIdx = 0;
       }
 

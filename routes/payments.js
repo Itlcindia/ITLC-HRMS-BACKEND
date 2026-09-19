@@ -101,15 +101,85 @@ router.post('/create-order', (req, res) => {
 
 // 2. Verify Razorpay Payment
 router.post('/verify', (req, res) => {
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planId, companyId, amount, currency } = req.body;
   if (!razorpay_payment_id) {
     return res.status(400).json({ success: false, message: 'Missing payment ID' });
   }
+
+  let updatedCompany = null;
+  let paymentRecord = null;
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+      const compTarget = String(companyId || req.headers['x-tenant-id'] || '').toLowerCase().trim();
+      let tenantIdx = (db.tenants || []).findIndex(t => 
+        compTarget && (
+          String(t.id || '').toLowerCase().trim() === compTarget ||
+          String(t.adminEmail || '').toLowerCase().trim() === compTarget ||
+          String(t.companyName || '').toLowerCase().trim() === compTarget ||
+          String(t.name || '').toLowerCase().trim() === compTarget
+        )
+      );
+      if (tenantIdx === -1 && (db.tenants || []).length > 0) {
+        tenantIdx = 0;
+      }
+      const paidDateIso = new Date().toISOString();
+      const activePlanId = planId || 'starter';
+      if (tenantIdx !== -1) {
+        db.tenants[tenantIdx] = {
+          ...db.tenants[tenantIdx],
+          status: 'active',
+          subscriptionStatus: 'active',
+          subscriptionPlanId: activePlanId,
+          planId: activePlanId,
+          plan: activePlanId,
+          paidAt: paidDateIso,
+          lastPayment: paidDateIso,
+          transactionId: razorpay_payment_id,
+          expiresAt: new Date(Date.now() + 30 * 86400000).toISOString()
+        };
+        updatedCompany = db.tenants[tenantIdx];
+
+        const tId = String(db.tenants[tenantIdx].id);
+        const tEmail = String(db.tenants[tenantIdx].adminEmail || db.tenants[tenantIdx].email || '').toLowerCase().trim();
+        (db.users || []).forEach(u => {
+          if (String(u.tenantId) === tId || String(u.companyId) === tId || (u.email && u.email.toLowerCase().trim() === tEmail)) {
+            u.subscriptionStatus = 'active';
+            u.subscriptionPlanId = activePlanId;
+          }
+        });
+      }
+
+      paymentRecord = {
+        id: razorpay_payment_id,
+        invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
+        companyId: updatedCompany?.id || compTarget || 'comp_active',
+        companyName: updatedCompany?.companyName || updatedCompany?.name || 'ITLC Client',
+        amount: Number(amount || 499),
+        currency: currency || 'INR',
+        gateway: 'razorpay',
+        status: 'successful',
+        planId: activePlanId,
+        transactionId: razorpay_payment_id,
+        date: paidDateIso,
+        createdAt: paidDateIso
+      };
+      db.payments = db.payments || [];
+      db.payments.unshift(paymentRecord);
+      fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+    }
+  } catch (err) {
+    console.error('Payment verify persistence error:', err);
+  }
+
   return res.json({
     success: true,
     verified: true,
     paymentId: razorpay_payment_id,
-    orderId: razorpay_order_id
+    orderId: razorpay_order_id,
+    company: updatedCompany,
+    payment: paymentRecord,
+    message: 'Payment verified and subscription unlocked successfully!'
   });
 });
 
