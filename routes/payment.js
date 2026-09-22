@@ -79,8 +79,14 @@ router.post('/create-razorpay-order', auth(['Company Admin']), async (req, res) 
     const defaultKeyId = globalSettings ? globalSettings.razorpayKeyId : '';
     const defaultSecret = globalSettings ? globalSettings.razorpaySecret : '';
 
-    const activeKeyId = company.razorpayKeyId || defaultKeyId || process.env.RAZORPAY_KEY_ID;
-    const activeSecret = company.razorpaySecret || defaultSecret || process.env.RAZORPAY_SECRET;
+    let activeKeyId = company.razorpayKeyId || defaultKeyId || process.env.RAZORPAY_KEY_ID;
+    let activeSecret = company.razorpaySecret || defaultSecret || process.env.RAZORPAY_SECRET || process.env.RAZORPAY_KEY_SECRET;
+
+    // Enforce Live Production Credentials if available in environment
+    if ((!activeKeyId || activeKeyId.startsWith('rzp_test_') || activeKeyId.includes('Mock')) && process.env.RAZORPAY_KEY_ID?.startsWith('rzp_live_')) {
+      activeKeyId = process.env.RAZORPAY_KEY_ID;
+      activeSecret = process.env.RAZORPAY_SECRET || process.env.RAZORPAY_KEY_SECRET;
+    }
 
     if (!activeKeyId || activeKeyId.includes('Mock') || !activeSecret || activeSecret.includes('Mock')) {
       // Mock Mode
@@ -89,7 +95,7 @@ router.post('/create-razorpay-order', auth(['Company Admin']), async (req, res) 
         orderId: `mock_order_${Date.now()}`,
         amount: amount * 100,
         currency,
-        key: activeKeyId || 'rzp_test_MockRazorpayID'
+        key: activeKeyId || 'rzp_live_TZtOW3aeVNZT0s'
       });
     }
 
