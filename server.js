@@ -391,6 +391,22 @@ function parseBody(req) {
   });
 }
 
+function parseBodyWithRaw(req) {
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const json = raw ? JSON.parse(raw) : {};
+        resolve({ json, raw });
+      } catch (err) {
+        resolve({ json: {}, raw });
+      }
+    });
+  });
+}
+
+
 // Static MIME Map
 const MIME_TYPES = {
   '.png': 'image/png',
@@ -4115,8 +4131,173 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     return;
   }
 
+  // 7.000 RAZORPAY WEBHOOK HANDLER (/api/webhook/razorpay & /api/webhooks/razorpay & /api/payment/webhook)
+  if ((pathname === '/api/webhook/razorpay' || pathname === '/api/webhooks/razorpay' || pathname === '/api/payment/webhook' || pathname === '/api/payments/webhook')) {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'active',
+        service: 'ITLC Razorpay Webhook Gateway',
+        supportedEvents: ['payment.captured', 'order.paid'],
+        timestamp: new Date().toISOString()
+      }));
+      return;
+    }
+
+    if (req.method === 'POST') {
+      try {
+        const { json: body, raw } = await parseBodyWithRaw(req);
+        const webhookSignature = req.headers['x-razorpay-signature'] || '';
+        const db = readDb();
+        const { keySecret } = getActiveRazorpayCredentials();
+        const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || db.globalSettings?.razorpayWebhookSecret || keySecret || '';
+
+        // 1. Signature Verification if Webhook Secret is present
+        if (webhookSecret && webhookSignature && raw) {
+          const expectedSignature = crypto
+            .createHmac('sha256', webhookSecret)
+            .update(raw)
+            .digest('hex');
+          if (expectedSignature !== webhookSignature) {
+            console.warn('[Webhook] Signature verification mismatch.');
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: 'Invalid webhook signature' }));
+            return;
+          }
+        }
+
+        const eventName = body.event || 'payment.captured';
+        console.log(`[Razorpay Webhook] Received Event: ${eventName}`);
+
+        // Process successful payment events
+        if (eventName === 'payment.captured' || eventName === 'order.paid' || eventName === 'payment.authorized') {
+          const paymentEntity = body.payload?.payment?.entity || body.entity || {};
+          const orderEntity = body.payload?.order?.entity || {};
+
+          const paymentId = paymentEntity.id || body.id || `pay_${Date.now()}`;
+          const orderId = paymentEntity.order_id || orderEntity.id || '';
+          const amount = paymentEntity.amount ? Number(paymentEntity.amount) / 100 : (orderEntity.amount ? Number(orderEntity.amount) / 100 : 499);
+          const currency = paymentEntity.currency || orderEntity.currency || 'INR';
+
+          const notes = { ...(orderEntity.notes || {}), ...(paymentEntity.notes || {}) };
+          const planId = notes.planId || notes.subscriptionPlanId || 'starter';
+          const noteCompId = (notes.companyId || notes.tenantId || '').trim();
+          const noteEmail = (paymentEntity.email || notes.customerEmail || notes.companyEmail || notes.email || '').toLowerCase().trim();
+          const noteCompName = (notes.companyName || notes.name || '').trim();
+
+          // Match Company in Database
+          let tenantIdx = (db.tenants || []).findIndex(t => 
+            (noteCompId && String(t.id).toLowerCase() === noteCompId.toLowerCase()) ||
+            (noteEmail && (
+              String(t.adminEmail || '').toLowerCase().trim() === noteEmail ||
+              String(t.email || '').toLowerCase().trim() === noteEmail
+            )) ||
+            (noteCompName && String(t.companyName || t.name || '').toLowerCase().trim() === noteCompName.toLowerCase())
+          );
+
+          if (tenantIdx === -1 && (db.tenants || []).length > 0) {
+            tenantIdx = 0;
+          }
+
+          const plan = (db.subscriptionPlans || []).find(p => p.id === planId) || {
+            id: planId,
+            name: String(planId).toUpperCase(),
+            seatLimit: 50,
+            storageLimitGb: 50,
+            priceMonthly: amount
+          };
+          const seatLimit = Number(plan.seatLimit || plan.employeeLimit || 50);
+          const storageLimitGb = Number(plan.storageLimitGb || plan.storageLimit || 50);
+          const planName = plan.name || String(planId).toUpperCase();
+          const paidDateIso = new Date().toISOString();
+
+          if (tenantIdx !== -1) {
+            db.tenants[tenantIdx] = {
+              ...db.tenants[tenantIdx],
+              status: 'active',
+              subscriptionStatus: 'active',
+              subscriptionPlanId: plan.id,
+              planId: plan.id,
+              plan: plan.id,
+              planName: planName,
+              seatLimit: seatLimit,
+              maxEmployees: seatLimit,
+              staffCapacity: seatLimit,
+              storageLimitGb: storageLimitGb,
+              storageLimit: storageLimitGb,
+              paidAt: paidDateIso,
+              lastPayment: paidDateIso,
+              transactionId: paymentId,
+              expiresAt: new Date(Date.now() + 30 * 86400000).toISOString()
+            };
+
+            const tId = String(db.tenants[tenantIdx].id);
+            const tEmail = String(db.tenants[tenantIdx].adminEmail || db.tenants[tenantIdx].email || '').toLowerCase().trim();
+            (db.users || []).forEach(u => {
+              if (String(u.tenantId) === tId || String(u.companyId) === tId || (u.email && u.email.toLowerCase().trim() === tEmail)) {
+                u.subscriptionStatus = 'active';
+                u.subscriptionPlanId = plan.id;
+              }
+            });
+          }
+
+          // Register Payment Record
+          db.payments = db.payments || [];
+          const existingPay = db.payments.find(p => p.id === paymentId);
+          if (!existingPay) {
+            const invoiceId = `INV-${Date.now().toString().slice(-6)}`;
+            db.payments.unshift({
+              id: paymentId,
+              invoiceNumber: invoiceId,
+              companyId: tenantIdx !== -1 ? db.tenants[tenantIdx].id : (noteCompId || 'comp_client'),
+              companyName: (tenantIdx !== -1 ? (db.tenants[tenantIdx].companyName || db.tenants[tenantIdx].name) : null) || noteCompName || 'ITLC Client',
+              amount: amount,
+              currency: currency,
+              gateway: 'razorpay',
+              status: 'successful',
+              planId: plan.id,
+              planName: planName,
+              transactionId: paymentId,
+              source: 'razorpay_webhook',
+              date: paidDateIso,
+              createdAt: paidDateIso
+            });
+          }
+
+          // Audit Log
+          db.auditLogs = db.auditLogs || [];
+          db.auditLogs.unshift({
+            id: Date.now(),
+            action: 'Razorpay Webhook: Subscription Auto-Unlocked',
+            detail: `Webhook event [${eventName}] confirmed payment ${paymentId} (₹${amount}). Workspace activated.`,
+            actor: 'Razorpay Webhook Daemon',
+            category: 'payment',
+            timestamp: new Date().toLocaleTimeString()
+          });
+
+          writeDb(db);
+          console.log(`[Razorpay Webhook] Successfully unlocked subscription for tenant: ${tenantIdx !== -1 ? db.tenants[tenantIdx].name : noteCompName}`);
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: true, 
+          status: 'ok', 
+          event: eventName,
+          message: 'Razorpay webhook processed successfully' 
+        }));
+      } catch (webhookErr) {
+        console.error('[Razorpay Webhook Error]:', webhookErr);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: webhookErr.message }));
+      }
+      return;
+    }
+  }
+
   // 7.001 PUBLIC PAYMENT CONFIGURATION (/api/payment/config)
   if (pathname === '/api/payment/config' && req.method === 'GET') {
+
     const { keyId } = getActiveRazorpayCredentials();
     const db = readDb();
     res.writeHead(200, { 'Content-Type': 'application/json' });

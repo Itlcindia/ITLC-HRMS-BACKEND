@@ -317,5 +317,82 @@ router.get('/history', auth(['Company Admin']), async (req, res) => {
   }
 });
 
+// Razorpay Webhook Gateway Endpoint (/api/payment/webhook & /api/payment/webhook/razorpay)
+router.get(['/webhook', '/webhook/razorpay'], (req, res) => {
+  res.json({
+    status: 'active',
+    service: 'ITLC Razorpay Webhook Gateway',
+    supportedEvents: ['payment.captured', 'order.paid'],
+    timestamp: new Date().toISOString()
+  });
+});
+
+router.post(['/webhook', '/webhook/razorpay'], async (req, res) => {
+  try {
+    const crypto = require('crypto');
+    const body = req.body;
+    const webhookSignature = req.headers['x-razorpay-signature'];
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_SECRET;
+
+    if (webhookSecret && webhookSignature) {
+      const shasum = crypto.createHmac('sha256', webhookSecret);
+      shasum.update(JSON.stringify(body));
+      const digest = shasum.digest('hex');
+      if (digest !== webhookSignature) {
+        return res.status(400).json({ error: 'Invalid webhook signature' });
+      }
+    }
+
+    const eventName = body.event || 'payment.captured';
+    if (eventName === 'payment.captured' || eventName === 'order.paid') {
+      const payment = body.payload?.payment?.entity || body.entity || {};
+      const order = body.payload?.order?.entity || {};
+      const notes = { ...(order.notes || {}), ...(payment.notes || {}) };
+
+      const planId = notes.planId || 'starter';
+      const companyId = notes.companyId || notes.tenantId;
+      const email = payment.email || notes.customerEmail;
+
+      let company;
+      if (companyId) {
+        company = await Company.findByPk(companyId);
+      }
+      if (!company && email) {
+        company = await Company.findOne({ where: { email: email } });
+      }
+
+      if (company) {
+        company.subscriptionPlanId = planId;
+        company.status = 'active';
+
+        const dbPlan = await SubscriptionPlan.findByPk(planId);
+        if (dbPlan) {
+          company.maxEmployees = dbPlan.employeeLimit;
+          company.storageLimit = dbPlan.storageLimit;
+        }
+        await company.save();
+
+        await Payment.create({
+          id: payment.id || `pay_${Date.now()}`,
+          companyId: company.id,
+          companyName: company.name,
+          invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          amount: payment.amount ? payment.amount / 100 : 499,
+          gateway: 'razorpay_webhook',
+          status: 'successful',
+          planId: planId,
+          currency: payment.currency || 'INR',
+          date: new Date().toISOString()
+        });
+      }
+    }
+
+    res.json({ success: true, status: 'ok', message: 'Webhook processed' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+
 
