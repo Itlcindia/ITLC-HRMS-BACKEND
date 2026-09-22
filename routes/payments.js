@@ -7,25 +7,19 @@ const path = require('path');
 const DB_FILE = path.join(__dirname, '../database.json');
 
 function getActiveRazorpayCredentials() {
-  let keyId = '';
-  let keySecret = '';
+  let keyId = (process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || '').trim();
+  let keySecret = (process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '').trim();
   try {
     if (fs.existsSync(DB_FILE)) {
       const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-      if (db.globalSettings?.razorpayKeyId && typeof db.globalSettings.razorpayKeyId === 'string' && db.globalSettings.razorpayKeyId.trim()) {
+      if (!keyId && db.globalSettings?.razorpayKeyId && typeof db.globalSettings.razorpayKeyId === 'string' && db.globalSettings.razorpayKeyId.trim()) {
         keyId = db.globalSettings.razorpayKeyId.trim();
       }
-      if (db.globalSettings?.razorpaySecret && typeof db.globalSettings.razorpaySecret === 'string' && db.globalSettings.razorpaySecret.trim()) {
+      if (!keySecret && db.globalSettings?.razorpaySecret && typeof db.globalSettings.razorpaySecret === 'string' && db.globalSettings.razorpaySecret.trim()) {
         keySecret = db.globalSettings.razorpaySecret.trim();
       }
     }
   } catch (err) {}
-  if (!keyId) {
-    keyId = (process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || '').trim();
-  }
-  if (!keySecret) {
-    keySecret = (process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '').trim();
-  }
   return { keyId, keySecret };
 }
 
