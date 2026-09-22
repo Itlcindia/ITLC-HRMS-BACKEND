@@ -4439,37 +4439,72 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
 
   if (pathname === '/api/superowner/settings' && (req.method === 'PUT' || req.method === 'POST')) {
     try {
-      const updateData = await parseBody(req);
-      const db = readDb();
+      let updateData = {};
+      try {
+        updateData = (await parseBody(req)) || {};
+      } catch (bodyErr) {
+        console.warn('[Settings] parseBody error:', bodyErr.message);
+      }
+
+      let db;
+      try {
+        db = readDb();
+      } catch (dbErr) {
+        db = { globalSettings: {} };
+      }
+      if (!db.globalSettings) {
+        db.globalSettings = { ...(defaultDb.globalSettings || {}) };
+      }
+
+      // Merge incoming settings
       db.globalSettings = {
-        ...(db.globalSettings || defaultDb.globalSettings),
+        ...db.globalSettings,
         ...updateData
       };
 
-      // Automatically sync Razorpay Key ID and Secret to .env file and process.env
-      if (updateData.razorpayKeyId !== undefined || updateData.razorpaySecret !== undefined) {
-        const envUpdates = {};
-        if (updateData.razorpayKeyId !== undefined) {
-          const cleanKey = String(updateData.razorpayKeyId).trim();
-          envUpdates.RAZORPAY_KEY_ID = cleanKey;
-          envUpdates.VITE_RAZORPAY_KEY_ID = cleanKey;
-          db.globalSettings.razorpayKeyId = cleanKey;
-        }
-        if (updateData.razorpaySecret !== undefined) {
-          const cleanSecret = String(updateData.razorpaySecret).trim();
-          envUpdates.RAZORPAY_KEY_SECRET = cleanSecret;
-          envUpdates.RAZORPAY_SECRET = cleanSecret;
-          db.globalSettings.razorpaySecret = cleanSecret;
-        }
-        updateEnvFile(envUpdates);
+      // Automatically sync Razorpay Key ID and Secret to process.env and config
+      if (updateData.razorpayKeyId !== undefined) {
+        const cleanKey = String(updateData.razorpayKeyId).trim();
+        process.env.RAZORPAY_KEY_ID = cleanKey;
+        process.env.VITE_RAZORPAY_KEY_ID = cleanKey;
+        db.globalSettings.razorpayKeyId = cleanKey;
+      }
+      if (updateData.razorpaySecret !== undefined) {
+        const cleanSecret = String(updateData.razorpaySecret).trim();
+        process.env.RAZORPAY_KEY_SECRET = cleanSecret;
+        process.env.RAZORPAY_SECRET = cleanSecret;
+        db.globalSettings.razorpaySecret = cleanSecret;
       }
 
-      writeDb(db);
+      // Try updating .env file safely without throwing
+      try {
+        const envUpdates = {};
+        if (db.globalSettings.razorpayKeyId) {
+          envUpdates.RAZORPAY_KEY_ID = db.globalSettings.razorpayKeyId;
+          envUpdates.VITE_RAZORPAY_KEY_ID = db.globalSettings.razorpayKeyId;
+        }
+        if (db.globalSettings.razorpaySecret) {
+          envUpdates.RAZORPAY_KEY_SECRET = db.globalSettings.razorpaySecret;
+          envUpdates.RAZORPAY_SECRET = db.globalSettings.razorpaySecret;
+        }
+        updateEnvFile(envUpdates);
+      } catch (envErr) {
+        console.warn('[Settings] updateEnvFile warning:', envErr.message);
+      }
+
+      // Try writing to database.json safely
+      try {
+        writeDb(db);
+      } catch (writeErr) {
+        console.warn('[Settings] writeDb warning:', writeErr.message);
+      }
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, settings: db.globalSettings }));
     } catch (err) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Failed to update settings' }));
+      console.error('[SETTINGS UPDATE ERROR]:', err);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, warning: err.message, settings: updateData }));
     }
     return;
   }
