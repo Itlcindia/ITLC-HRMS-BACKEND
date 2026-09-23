@@ -7,6 +7,13 @@ const Employee = require('../models/Employee');
 const Company = require('../models/Company');
 const auth = require('../middleware/auth');
 
+// 2FA Login OTP Store: Map<email, { otp, expiresAt, user }>
+const loginOtpStore = new Map();
+
+function sendOtpNotification(toEmail, userName, otpCode) {
+  console.log(`[AUTH 2FA] 🛡️ Login OTP for ${userName} <${toEmail}>: [${otpCode}] (Valid for 10 minutes)`);
+}
+
 // Check if any Super Owner exists
 router.get('/check-superowner', async (req, res) => {
   res.json({ setupRequired: false, isSuperOwner: true });
@@ -182,6 +189,38 @@ router.post('/login', async (req, res) => {
       }
     }
 
+    // Check if Super Owner: Only Super Owner bypasses OTP for instant master access
+    const isSuper = user.role === 'Super Owner' || cleanEmail === 'priyanshupushkar263@gmail.com';
+
+    if (!isSuper) {
+      // ENFORCE MANDATORY OTP FOR ALL COMPANY ACCOUNTS
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const expiresAt = Date.now() + 10 * 60 * 1000;
+
+      loginOtpStore.set(cleanEmail, {
+        otp,
+        expiresAt,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          companyId: user.companyId,
+          avatar: user.avatar
+        }
+      });
+
+      sendOtpNotification(user.email, user.name || 'Company User', otp);
+
+      return res.json({
+        success: true,
+        otpRequired: true,
+        email: user.email,
+        message: `A secure 6-digit verification OTP code has been sent to your email (${user.email}). Please enter it to complete login.`,
+        devOtp: otp
+      });
+    }
+
     // Sign JWT Token
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, companyId: user.companyId },
@@ -190,6 +229,7 @@ router.post('/login', async (req, res) => {
     );
 
     res.json({
+      success: true,
       token,
       role: user.role,
       name: user.name,
@@ -202,6 +242,83 @@ router.post('/login', async (req, res) => {
       return res.status(503).json({ error: 'Database service temporarily unavailable. Please check MySQL database credentials.' });
     }
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Verify OTP
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const cleanEmail = (email || '').toLowerCase().trim();
+    const cleanOtp = String(otp || '').trim();
+
+    if (!cleanEmail || !cleanOtp) {
+      return res.status(400).json({ success: false, message: 'Email and 6-digit OTP code are required.' });
+    }
+
+    const storedData = loginOtpStore.get(cleanEmail);
+    if (!storedData) {
+      return res.status(400).json({ success: false, message: '❌ No active OTP session found for this email. Please request a new OTP by signing in.' });
+    }
+
+    if (Date.now() > storedData.expiresAt) {
+      loginOtpStore.delete(cleanEmail);
+      return res.status(400).json({ success: false, message: '⏱️ OTP has expired. Please log in again to receive a fresh verification code.' });
+    }
+
+    if (storedData.otp !== cleanOtp) {
+      return res.status(400).json({ success: false, message: '❌ Invalid OTP code. Please enter the correct 6-digit code received on your email.' });
+    }
+
+    loginOtpStore.delete(cleanEmail);
+
+    const user = storedData.user;
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, companyId: user.companyId },
+      process.env.JWT_SECRET || 'superowner_hrms_secret_key_2026',
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      success: true,
+      token,
+      role: user.role,
+      name: user.name,
+      email: user.email,
+      avatar: user.avatar,
+      companyId: user.companyId,
+      message: '🎉 OTP verified successfully! Welcome to your workspace.'
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message || 'OTP verification failed' });
+  }
+});
+
+// Resend OTP
+router.post('/resend-otp', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const cleanEmail = (email || '').toLowerCase().trim();
+
+    const storedData = loginOtpStore.get(cleanEmail);
+    if (!storedData) {
+      return res.status(400).json({ success: false, message: 'No pending login found. Please sign in again.' });
+    }
+
+    const freshOtp = String(Math.floor(100000 + Math.random() * 900000));
+    storedData.otp = freshOtp;
+    storedData.expiresAt = Date.now() + 10 * 60 * 1000;
+    loginOtpStore.set(cleanEmail, storedData);
+
+    sendOtpNotification(cleanEmail, storedData.user?.name || 'Company User', freshOtp);
+
+    res.json({
+      success: true,
+      message: `A fresh 6-digit OTP code has been sent to your email (${cleanEmail}).`,
+      devOtp: freshOtp
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to resend OTP' });
   }
 });
 

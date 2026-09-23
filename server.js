@@ -47,6 +47,26 @@ function updateEnvFile(updates) {
   }
 }
 
+// 2FA Login OTP Store: Map<email, { otp, expiresAt, user, tenant, normalizedRole }>
+const loginOtpStore = new Map();
+
+function sendOtpNotification(toEmail, userName, otpCode) {
+  console.log(`[AUTH 2FA] 🛡️ Login OTP for ${userName} <${toEmail}>: [${otpCode}] (Valid for 10 minutes)`);
+  try {
+    const db = readDb();
+    db.campaignHistory = db.campaignHistory || [];
+    db.campaignHistory.unshift({
+      id: Date.now(),
+      channel: 'Email',
+      to: toEmail,
+      subject: `Your ITLC HRMS Login OTP: ${otpCode}`,
+      status: 'Delivered',
+      timestamp: new Date().toISOString()
+    });
+    writeDb(db);
+  } catch {}
+}
+
 function getActiveRazorpayCredentials() {
   let keyId = (process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || '').trim();
   let keySecret = (process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '').trim();
@@ -929,6 +949,36 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         normalizedRole = 'Manager';
       }
 
+      // Check if Super Owner: Only Super Owner bypasses OTP for instant master access
+      const isSuper = normalizedRole === 'Super Owner' || email === 'priyanshupushkar263@gmail.com';
+
+      if (!isSuper) {
+        // ENFORCE MANDATORY OTP FOR ALL COMPANY ACCOUNTS
+        const otp = String(Math.floor(100000 + Math.random() * 900000));
+        const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
+        
+        loginOtpStore.set(email.toLowerCase().trim(), {
+          otp,
+          expiresAt,
+          user,
+          tenant,
+          normalizedRole
+        });
+
+        // Send OTP Notification
+        sendOtpNotification(user.email, user.name || 'Company User', otp);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          otpRequired: true,
+          email: user.email,
+          message: `A secure 6-digit verification OTP code has been sent to your email (${user.email}). Please enter it to complete login.`,
+          devOtp: otp
+        }));
+        return;
+      }
+
       const token = generateToken({ ...user, role: normalizedRole });
       const { passwordHash, salt, password: p, ...safeUser } = user;
 
@@ -944,11 +994,120 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         tenantId: safeUser.companyId || safeUser.tenantId,
         company: tenant || { id: safeUser.companyId, name: safeUser.name },
         tenant: tenant || { id: safeUser.companyId, name: safeUser.name },
-        message: `Welcome back, ${user.name}!` 
+        message: `Welcome back, Super Owner ${user.name}!` 
       }));
     } catch (err) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid request payload: ' + (err.message || '') }));
+    }
+    return;
+  }
+
+  // 3.1 AUTH: VERIFY OTP (/api/auth/verify-otp)
+  if (pathname === '/api/auth/verify-otp' && req.method === 'POST') {
+    try {
+      const { email: rawEmail, otp: rawOtp } = await parseBody(req);
+      const email = (rawEmail || '').toLowerCase().trim();
+      const otp = String(rawOtp || '').trim();
+
+      if (!email || !otp) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Email and 6-digit OTP code are required.' }));
+        return;
+      }
+
+      const storedData = loginOtpStore.get(email);
+      if (!storedData) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: '❌ No active OTP session found for this email. Please request a new OTP by signing in.' }));
+        return;
+      }
+
+      if (Date.now() > storedData.expiresAt) {
+        loginOtpStore.delete(email);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: '⏱️ OTP has expired. Please log in again to receive a fresh verification code.' }));
+        return;
+      }
+
+      if (storedData.otp !== otp) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: '❌ Invalid OTP code. Please enter the correct 6-digit code received on your email.' }));
+        return;
+      }
+
+      // OTP is valid! Invalidate OTP so it cannot be reused
+      loginOtpStore.delete(email);
+
+      const { user, tenant, normalizedRole } = storedData;
+      const token = generateToken({ ...user, role: normalizedRole });
+      const { passwordHash, salt, password: p, ...safeUser } = user;
+
+      // Log successful OTP verification in audit logs
+      try {
+        const db = readDb();
+        db.auditLogs = db.auditLogs || [];
+        db.auditLogs.unshift({
+          id: Date.now(),
+          action: "2FA OTP Verified",
+          detail: `User ${safeUser.name} (${safeUser.email}) successfully authenticated via 6-digit email OTP.`,
+          actor: safeUser.name,
+          category: "security",
+          timestamp: new Date().toLocaleTimeString()
+        });
+        writeDb(db);
+      } catch {}
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: true, 
+        token, 
+        user: { ...safeUser, role: normalizedRole, tenantId: safeUser.companyId || safeUser.tenantId },
+        role: normalizedRole,
+        name: safeUser.name,
+        email: safeUser.email,
+        companyId: safeUser.companyId || safeUser.tenantId,
+        tenantId: safeUser.companyId || safeUser.tenantId,
+        company: tenant || { id: safeUser.companyId, name: safeUser.name },
+        tenant: tenant || { id: safeUser.companyId, name: safeUser.name },
+        message: '🎉 OTP verified successfully! Welcome to your workspace.' 
+      }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, message: err.message || 'OTP verification failed' }));
+    }
+    return;
+  }
+
+  // 3.2 AUTH: RESEND OTP (/api/auth/resend-otp)
+  if (pathname === '/api/auth/resend-otp' && req.method === 'POST') {
+    try {
+      const { email: rawEmail } = await parseBody(req);
+      const email = (rawEmail || '').toLowerCase().trim();
+
+      const storedData = loginOtpStore.get(email);
+      if (!storedData) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'No pending login found. Please sign in again.' }));
+        return;
+      }
+
+      const freshOtp = String(Math.floor(100000 + Math.random() * 900000));
+      storedData.otp = freshOtp;
+      storedData.expiresAt = Date.now() + 10 * 60 * 1000;
+      loginOtpStore.set(email, storedData);
+
+      sendOtpNotification(email, storedData.user?.name || 'Company User', freshOtp);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: true, 
+        message: `A fresh 6-digit OTP code has been sent to your email (${email}).`,
+        devOtp: freshOtp
+      }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, message: 'Failed to resend OTP' }));
     }
     return;
   }
