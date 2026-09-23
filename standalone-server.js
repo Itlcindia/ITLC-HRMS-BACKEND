@@ -5,6 +5,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import nodemailer from 'nodemailer';
 import swaggerDocs from './utils/swaggerDocs.js';
 const { swaggerSpec, getSwaggerHtml, getDashboardHtml, printServerBanner } = swaggerDocs;
 
@@ -50,7 +51,7 @@ function updateEnvFile(updates) {
 // 2FA Login OTP Store: Map<email, { otp, expiresAt, user, tenant, normalizedRole }>
 const loginOtpStore = new Map();
 
-function sendOtpNotification(toEmail, userName, otpCode) {
+async function sendOtpNotification(toEmail, userName, otpCode) {
   console.log(`[AUTH 2FA] 🛡️ Login OTP for ${userName} <${toEmail}>: [${otpCode}] (Valid for 10 minutes)`);
   try {
     const db = readDb();
@@ -65,6 +66,58 @@ function sendOtpNotification(toEmail, userName, otpCode) {
     });
     writeDb(db);
   } catch {}
+
+  // Attempt real SMTP dispatch if credentials exist in .env or globalSettings
+  try {
+    const db = readDb();
+    const smtpHost = (process.env.SMTP_HOST || db.globalSettings?.smtpHost || db.globalSettings?.smtpServer || '').trim();
+    const smtpPort = parseInt(process.env.SMTP_PORT || db.globalSettings?.smtpPort || '587');
+    const smtpUser = (process.env.SMTP_USER || db.globalSettings?.smtpUser || db.globalSettings?.smtpEmail || '').trim();
+    const smtpPass = (process.env.SMTP_PASS || db.globalSettings?.smtpPass || db.globalSettings?.smtpPassword || '').trim();
+    const smtpFrom = (process.env.SMTP_FROM || db.globalSettings?.smtpFrom || smtpUser || 'noreply@itlc-hrms.com').trim();
+
+    if (smtpHost && smtpUser && smtpPass) {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass
+        }
+      });
+
+      await transporter.sendMail({
+        from: `"ITLC HRMS Security" <${smtpFrom}>`,
+        to: toEmail,
+        subject: `Your ITLC HRMS Verification Code: ${otpCode}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h2 style="color: #4f46e5; margin: 0 0 6px 0; font-size: 22px;">ITLC Enterprise HRMS</h2>
+              <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #64748b; font-weight: bold;">Login Verification Code</span>
+            </div>
+            <p style="color: #334155; font-size: 14px; margin-bottom: 16px;">Hello <strong>${userName || 'User'}</strong>,</p>
+            <p style="color: #475569; font-size: 13px; line-height: 1.6; margin-bottom: 24px;">
+              A login attempt was made for your account on <strong>ITLC HRMS Portal</strong>. Please enter the following 6-digit one-time verification code to complete sign-in:
+            </p>
+            <div style="text-align: center; margin: 28px 0; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 18px;">
+              <span style="font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #4338ca; font-family: monospace;">${otpCode}</span>
+              <p style="margin: 8px 0 0 0; font-size: 11px; color: #64748b;">Valid for 10 minutes only. Do not share this code with anyone.</p>
+            </div>
+            <p style="color: #94a3b8; font-size: 12px; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 24px;">
+              If you did not request this login attempt, please change your password immediately or contact your platform administrator.
+            </p>
+          </div>
+        `
+      });
+      console.log(`[AUTH 2FA] ✅ Real email OTP successfully sent to ${toEmail}`);
+    } else {
+      console.log(`[AUTH 2FA] ⚠️ SMTP credentials not yet configured in .env/Settings. OTP code is: ${otpCode}`);
+    }
+  } catch (emailErr) {
+    console.warn(`[AUTH 2FA] ❌ SMTP Email dispatch error:`, emailErr.message);
+  }
 }
 
 function getActiveRazorpayCredentials() {
