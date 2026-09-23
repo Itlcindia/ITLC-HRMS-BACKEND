@@ -583,7 +583,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
   // 3. AUTH: LOGIN
   if (pathname === '/api/auth/login' && req.method === 'POST') {
     try {
-      const { email: rawEmail, password } = await parseBody(req);
+      const { email: rawEmail, password, companyId: inputCompanyId, directLogin, bypassOtp } = await parseBody(req);
       const email = (rawEmail || '').toLowerCase().trim();
       const db = readDb();
 
@@ -743,11 +743,12 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         normalizedRole = 'Manager';
       }
 
-      // Check if Super Owner: Only Super Owner bypasses OTP for instant master access
+      // Check if Super Owner or direct password login requested
       const isSuper = normalizedRole === 'Super Owner' || email === 'priyanshupushkar263@gmail.com';
+      const allowDirectLogin = isSuper || directLogin === true || bypassOtp === true;
 
-      if (!isSuper) {
-        // ENFORCE MANDATORY OTP FOR ALL COMPANY ACCOUNTS
+      if (!allowDirectLogin) {
+        // ENFORCE OTP FOR COMPANY ACCOUNTS
         const otp = String(Math.floor(100000 + Math.random() * 900000));
         const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
 
@@ -3401,6 +3402,259 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       res.end(JSON.stringify({ error: 'Failed to create invoice' }));
     }
     return;
+  }
+
+  // 6.6 SUBSCRIPTION PLANS API (/api/superowner/plans, /api/auth/public-plans, /api/plans, /api/admin/plans)
+  if ((pathname === '/api/superowner/plans' || pathname === '/api/auth/public-plans' || pathname === '/api/plans' || pathname === '/api/admin/plans') && req.method === 'GET') {
+    const db = readDb();
+    const defaultPlans = [
+      {
+        id: 'demo',
+        name: 'DEMO TIER',
+        tagline: 'Quick 1 rupee testing and evaluation tier.',
+        price: 1,
+        priceMonthly: 1,
+        priceAnnual: 10,
+        currency: 'INR',
+        billingCycle: 'monthly',
+        trialDays: 14,
+        employeeLimit: 5,
+        seatLimit: 5,
+        storageLimit: 2,
+        storageLimitGb: 2,
+        aiCreditsLimit: 500,
+        defaultSuites: ['crm', 'hrms'],
+        badge: 'TEST PLAN',
+        showOnLandingPage: true,
+        highlightFeatures: [
+          'Up to 5 Employee Seats',
+          'Full HRMS & CRM Modules',
+          'Live Payment Gateway Test'
+        ],
+        features: {
+          payroll: true,
+          attendance: true,
+          recruitment: true,
+          faceRecognition: false,
+          gpsAttendance: false,
+          apiAccess: false,
+          whiteLabel: false
+        }
+      },
+      {
+        id: 'starter',
+        name: 'STARTER',
+        tagline: 'Ideal for small businesses and agile teams.',
+        price: 499,
+        priceMonthly: 499,
+        priceAnnual: 4990,
+        currency: 'INR',
+        billingCycle: 'monthly',
+        trialDays: 14,
+        employeeLimit: 50,
+        seatLimit: 50,
+        storageLimit: 50,
+        storageLimitGb: 50,
+        aiCreditsLimit: 1000,
+        defaultSuites: ['crm', 'hrms'],
+        badge: 'MOST POPULAR',
+        showOnLandingPage: true,
+        highlightFeatures: [
+          'Up to 50 Employee Seats',
+          'Real-time Biometric Radar & GPS',
+          'Automated GST Tax Invoicing',
+          'Multi-Branch Attendance Geofencing',
+          'Automated 1-Click Payroll Engine'
+        ],
+        features: {
+          payroll: true,
+          attendance: true,
+          recruitment: true,
+          faceRecognition: false,
+          gpsAttendance: true,
+          apiAccess: false,
+          whiteLabel: false
+        }
+      },
+      {
+        id: 'growth',
+        name: 'GROWTH',
+        tagline: 'For growing companies needing advanced workforce automation.',
+        price: 999,
+        priceMonthly: 999,
+        priceAnnual: 9990,
+        currency: 'INR',
+        billingCycle: 'monthly',
+        trialDays: 14,
+        employeeLimit: 100,
+        seatLimit: 100,
+        storageLimit: 100,
+        storageLimitGb: 100,
+        aiCreditsLimit: 2500,
+        defaultSuites: ['crm', 'hrms'],
+        badge: 'BUSINESS SCALE',
+        showOnLandingPage: true,
+        highlightFeatures: [
+          'Up to 100 Employee Seats',
+          'Advanced Analytics & Custom Roles',
+          'Automated Tax Compliance',
+          'Multi-Currency Invoicing',
+          'Priority Support Relay'
+        ],
+        features: {
+          payroll: true,
+          attendance: true,
+          recruitment: true,
+          faceRecognition: true,
+          gpsAttendance: true,
+          apiAccess: true,
+          whiteLabel: false
+        }
+      },
+      {
+        id: 'enterprise',
+        name: 'ENTERPRISE',
+        tagline: 'Comprehensive suite for large organizations.',
+        price: 1999,
+        priceMonthly: 1999,
+        priceAnnual: 19990,
+        currency: 'INR',
+        billingCycle: 'monthly',
+        trialDays: 14,
+        employeeLimit: 250,
+        seatLimit: 250,
+        storageLimit: 250,
+        storageLimitGb: 250,
+        aiCreditsLimit: 10000,
+        defaultSuites: ['crm', 'hrms'],
+        badge: 'ULTIMATE SUITE',
+        showOnLandingPage: true,
+        highlightFeatures: [
+          'Up to 250 Employee Seats',
+          'Dedicated Account Manager',
+          'Custom Workflow Engine',
+          'Unlimited Cloud Backups',
+          '99.9% Uptime SLA'
+        ],
+        features: {
+          payroll: true,
+          attendance: true,
+          recruitment: true,
+          faceRecognition: true,
+          gpsAttendance: true,
+          apiAccess: true,
+          whiteLabel: true
+        }
+      }
+    ];
+
+    if (!Array.isArray(db.subscriptionPlans) || db.subscriptionPlans.length === 0) {
+      db.subscriptionPlans = defaultPlans;
+      writeDb(db);
+    } else {
+      let updated = false;
+      for (const dp of defaultPlans) {
+        if (!db.subscriptionPlans.some(p => p.id === dp.id)) {
+          db.subscriptionPlans.push(dp);
+          updated = true;
+        }
+      }
+      if (updated) writeDb(db);
+    }
+
+    const defaultFeatures = {
+      payroll: true,
+      attendance: true,
+      recruitment: true,
+      faceRecognition: false,
+      gpsAttendance: true,
+      apiAccess: false,
+      whiteLabel: false
+    };
+
+    const sanitizedPlans = db.subscriptionPlans.map(p => ({
+      ...p,
+      features: {
+        ...defaultFeatures,
+        ...(typeof p.features === 'object' && p.features !== null ? p.features : {})
+      }
+    }));
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(sanitizedPlans));
+    return;
+  }
+
+  if ((pathname === '/api/superowner/plans' || pathname === '/api/plans') && req.method === 'POST') {
+    try {
+      const data = await parseBody(req);
+      const db = readDb();
+      if (!Array.isArray(db.subscriptionPlans)) db.subscriptionPlans = [];
+      const newPlan = {
+        id: data.id || `plan_${Date.now()}`,
+        name: data.name || 'New Subscription Plan',
+        priceMonthly: Number(data.priceMonthly || data.price || 499),
+        priceAnnual: Number(data.priceAnnual || (Number(data.priceMonthly || 499) * 10)),
+        seatLimit: Number(data.seatLimit || data.employeeLimit || 50),
+        storageLimitGb: Number(data.storageLimitGb || data.storageLimit || 50),
+        badge: data.badge || '',
+        tagline: data.tagline || 'Enterprise plan',
+        showOnLandingPage: data.showOnLandingPage !== false,
+        highlightFeatures: Array.isArray(data.highlightFeatures) ? data.highlightFeatures : [],
+        defaultSuites: data.defaultSuites || ['crm', 'hrms'],
+        ...data
+      };
+      db.subscriptionPlans = [...db.subscriptionPlans.filter(p => p.id !== newPlan.id), newPlan];
+      writeDb(db);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, plan: newPlan }));
+      return;
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+      return;
+    }
+  }
+
+  if (pathname.startsWith('/api/superowner/plans/') && req.method === 'PUT') {
+    try {
+      const id = pathname.replace('/api/superowner/plans/', '');
+      const data = await parseBody(req);
+      const db = readDb();
+      if (!Array.isArray(db.subscriptionPlans)) db.subscriptionPlans = [];
+      const idx = db.subscriptionPlans.findIndex(p => p.id === id);
+      if (idx !== -1) {
+        db.subscriptionPlans[idx] = { ...db.subscriptionPlans[idx], ...data, id };
+      } else {
+        db.subscriptionPlans.push({ ...data, id });
+      }
+      writeDb(db);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, plan: db.subscriptionPlans[idx !== -1 ? idx : db.subscriptionPlans.length - 1] }));
+      return;
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+      return;
+    }
+  }
+
+  if (pathname.startsWith('/api/superowner/plans/') && req.method === 'DELETE') {
+    try {
+      const id = pathname.replace('/api/superowner/plans/', '');
+      const db = readDb();
+      if (Array.isArray(db.subscriptionPlans)) {
+        db.subscriptionPlans = db.subscriptionPlans.filter(p => p.id !== id);
+        writeDb(db);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Plan deleted' }));
+      return;
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+      return;
+    }
   }
 
   // 7. PAYMENT GATEWAY API (/api/payments/create-order & /api/payment/create-razorpay-order & verify)

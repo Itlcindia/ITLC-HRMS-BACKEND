@@ -731,15 +731,19 @@
   "subscriptionPlans": [
     {
       "id": "demo",
-      "name": "demo",
+      "name": "DEMO TIER",
       "priceMonthly": 1,
       "priceAnnual": 10,
       "seatLimit": 5,
       "storageLimitGb": 2,
-      "badge": "",
-      "tagline": "Enterprise plan",
+      "badge": "TEST PLAN",
+      "tagline": "Quick 1 rupee testing and evaluation tier.",
       "showOnLandingPage": true,
-      "highlightFeatures": [],
+      "highlightFeatures": [
+        "Up to 5 Employee Seats",
+        "Full HRMS & CRM Modules",
+        "Live Payment Gateway Test"
+      ],
       "defaultSuites": [
         "crm",
         "hrms"
@@ -759,6 +763,120 @@
         "gpsAttendance": false,
         "apiAccess": false,
         "whiteLabel": false
+      }
+    },
+    {
+      "id": "starter",
+      "name": "STARTER",
+      "priceMonthly": 499,
+      "priceAnnual": 4990,
+      "seatLimit": 50,
+      "storageLimitGb": 50,
+      "badge": "MOST POPULAR",
+      "tagline": "Ideal for small businesses and agile teams.",
+      "showOnLandingPage": true,
+      "highlightFeatures": [
+        "Up to 50 Employee Seats",
+        "Real-time Biometric Radar & GPS",
+        "Automated GST Tax Invoicing",
+        "Multi-Branch Attendance Geofencing",
+        "Automated 1-Click Payroll Engine"
+      ],
+      "defaultSuites": [
+        "crm",
+        "hrms"
+      ],
+      "price": 499,
+      "currency": "INR",
+      "billingCycle": "monthly",
+      "trialDays": 14,
+      "employeeLimit": 50,
+      "storageLimit": 50,
+      "aiCreditsLimit": 1000,
+      "features": {
+        "payroll": true,
+        "attendance": true,
+        "recruitment": true,
+        "faceRecognition": false,
+        "gpsAttendance": true,
+        "apiAccess": false,
+        "whiteLabel": false
+      }
+    },
+    {
+      "id": "growth",
+      "name": "GROWTH",
+      "priceMonthly": 999,
+      "priceAnnual": 9990,
+      "seatLimit": 100,
+      "storageLimitGb": 100,
+      "badge": "BUSINESS SCALE",
+      "tagline": "For growing companies needing advanced workforce automation.",
+      "showOnLandingPage": true,
+      "highlightFeatures": [
+        "Up to 100 Employee Seats",
+        "Advanced Analytics & Custom Roles",
+        "Automated Tax Compliance",
+        "Multi-Currency Invoicing",
+        "Priority Support Relay"
+      ],
+      "defaultSuites": [
+        "crm",
+        "hrms"
+      ],
+      "price": 999,
+      "currency": "INR",
+      "billingCycle": "monthly",
+      "trialDays": 14,
+      "employeeLimit": 100,
+      "storageLimit": 100,
+      "aiCreditsLimit": 2500,
+      "features": {
+        "payroll": true,
+        "attendance": true,
+        "recruitment": true,
+        "faceRecognition": true,
+        "gpsAttendance": true,
+        "apiAccess": true,
+        "whiteLabel": false
+      }
+    },
+    {
+      "id": "enterprise",
+      "name": "ENTERPRISE",
+      "priceMonthly": 1999,
+      "priceAnnual": 19990,
+      "seatLimit": 250,
+      "storageLimitGb": 250,
+      "badge": "UNLIMITED ENTERPRISE",
+      "tagline": "Complete enterprise platform governance with dedicated infrastructure.",
+      "showOnLandingPage": true,
+      "highlightFeatures": [
+        "Up to 250 Employee Seats",
+        "Dedicated VIP Account Manager",
+        "Custom Feature Integrations",
+        "99.99% SLA Uptime Guarantee",
+        "Full White-Label Branding"
+      ],
+      "defaultSuites": [
+        "crm",
+        "hrms"
+      ],
+      "price": 1999,
+      "currency": "INR",
+      "billingCycle": "monthly",
+      "trialDays": 30,
+      "employeeLimit": 250,
+      "storageLimit": 250,
+      "aiCreditsLimit": 10000,
+      "features": {
+        "payroll": true,
+        "attendance": true,
+        "recruitment": true,
+        "faceRecognition": true,
+        "gpsAttendance": true,
+        "apiAccess": true,
+        "whiteLabel": true
       }
     }
   ],
