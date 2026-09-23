@@ -120,6 +120,233 @@ async function sendOtpNotification(toEmail, userName, otpCode) {
   }
 }
 
+// -------------------------------------------------------------
+// AUTOMATED SHIFT ATTENDANCE REMINDERS (CHECK-IN & CHECK-OUT)
+// -------------------------------------------------------------
+// Map to prevent duplicate shift reminders on same day: key = `${email}_${YYYY-MM-DD}_${type}`
+const sentShiftRemindersToday = new Map();
+
+async function sendAttendanceShiftReminderEmail({ toEmail, employeeName, companyName, type, shiftTime }) {
+  const isCheckIn = type === 'checkin';
+  const subject = isCheckIn 
+    ? `Shift Attendance Reminder: Time to mark your attendance - ${companyName || 'OmniStaff HRMS'}`
+    : `Shift Attendance Reminder: Time to clock out - ${companyName || 'OmniStaff HRMS'}`;
+
+  const heading = isCheckIn ? `Time to Mark Your Attendance!` : `Workday Shift Ended - Please Clock Out`;
+  const actionText = isCheckIn ? `Mark Attendance Now` : `Punch Out Now`;
+  const messageBody = isCheckIn
+    ? `Your workday shift at <strong>${companyName || 'OmniStaff HRMS'}</strong> has started at <strong>${shiftTime || '09:00'}</strong>. You have not marked your attendance yet for today. Please log in to your portal and punch in now.`
+    : `Your workday shift at <strong>${companyName || 'OmniStaff HRMS'}</strong> has concluded at <strong>${shiftTime || '17:00'}</strong>. Please remember to punch out and record your completed work hours.`;
+
+  console.log(`[ATTENDANCE SHIFT REMINDER] 🔔 Sending ${type} reminder to ${employeeName} <${toEmail}> at shift time ${shiftTime}`);
+
+  // Log in db.campaignHistory
+  try {
+    const db = readDb();
+    db.campaignHistory = db.campaignHistory || [];
+    db.campaignHistory.unshift({
+      id: Date.now(),
+      channel: 'Email',
+      to: toEmail,
+      subject: subject,
+      status: 'Delivered',
+      timestamp: new Date().toISOString()
+    });
+    writeDb(db);
+  } catch {}
+
+  // Attempt real SMTP dispatch
+  try {
+    const db = readDb();
+    const smtpHost = (process.env.SMTP_HOST || db.globalSettings?.smtpHost || db.globalSettings?.smtpServer || 'smtp.hostinger.com').trim();
+    const smtpPort = parseInt(process.env.SMTP_PORT || db.globalSettings?.smtpPort || '465');
+    const smtpUser = (process.env.SMTP_USER || db.globalSettings?.smtpUser || db.globalSettings?.smtpEmail || 'no-reply@itlcindia.com').trim();
+    const smtpPass = (process.env.SMTP_PASS || db.globalSettings?.smtpPass || db.globalSettings?.smtpPassword || 'Itlc@122').trim();
+    const smtpFrom = (process.env.SMTP_FROM || db.globalSettings?.smtpFrom || `"OmniStaff HRMS" <${smtpUser}>`).trim();
+
+    if (smtpHost && smtpUser && smtpPass && toEmail) {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass
+        }
+      });
+
+      await transporter.sendMail({
+        from: `"OmniStaff HRMS Attendance" <${smtpFrom}>`,
+        to: toEmail,
+        subject: subject,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h2 style="color: #4f46e5; margin: 0 0 6px 0; font-size: 22px;">${companyName || 'OmniStaff HRMS'}</h2>
+              <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #64748b; font-weight: bold;">Daily Attendance Notification</span>
+            </div>
+            <p style="color: #334155; font-size: 14px; margin-bottom: 16px;">Hello <strong>${employeeName || 'Staff Member'}</strong>,</p>
+            <p style="color: #475569; font-size: 13px; line-height: 1.6; margin-bottom: 24px;">
+              ${messageBody}
+            </p>
+            <div style="text-align: center; margin: 28px 0; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 20px;">
+              <p style="margin: 0 0 12px 0; font-size: 16px; font-weight: bold; color: #1e293b;">${heading}</p>
+              <span style="display: inline-block; padding: 10px 24px; background-color: #4f46e5; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px;">${actionText}</span>
+              <p style="margin: 12px 0 0 0; font-size: 11px; color: #64748b;">Scheduled Shift Time: <strong>${shiftTime}</strong></p>
+            </div>
+            <p style="color: #94a3b8; font-size: 12px; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 24px;">
+              This is an automated attendance notification sent by OmniStaff HRMS on behalf of ${companyName || 'your company'}.
+            </p>
+          </div>
+        `
+      });
+      console.log(`[ATTENDANCE SHIFT REMINDER] ✅ Email successfully sent to ${toEmail}`);
+      return true;
+    }
+  } catch (emailErr) {
+    console.warn(`[ATTENDANCE SHIFT REMINDER] ❌ Email dispatch error:`, emailErr.message);
+    return false;
+  }
+}
+
+async function dispatchShiftRemindersForCompany(companyId, type = 'checkin', force = false) {
+  try {
+    const db = readDb();
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    // Find target company or all companies if companyId is 'all' or empty
+    const targetTenants = (companyId && companyId !== 'all') 
+      ? (db.tenants || []).filter(t => 
+          String(t.id).toLowerCase() === String(companyId).toLowerCase() || 
+          String(t.companyName || '').toLowerCase() === String(companyId).toLowerCase() || 
+          String(t.name || '').toLowerCase() === String(companyId).toLowerCase()
+        )
+      : (db.tenants || []);
+
+    if (targetTenants.length === 0 && (db.tenants || []).length > 0) {
+      targetTenants.push(db.tenants[0]);
+    }
+
+    let dispatchedCount = 0;
+
+    for (const tenant of targetTenants) {
+      const compId = tenant.id;
+      const compName = tenant.companyName || tenant.name || 'OmniStaff HRMS';
+      const shiftStart = tenant.workdayStart || '09:00';
+      const shiftEnd = tenant.workdayEnd || '17:00';
+      const shiftTime = (type === 'checkin') ? shiftStart : shiftEnd;
+
+      // Find all employees belonging to this tenant/company
+      const compEmployees = (db.employees || []).filter(e => 
+        String(e.tenantId || e.companyId || '').toLowerCase() === String(compId).toLowerCase() ||
+        String(e.companyName || '').toLowerCase() === String(compName).toLowerCase() ||
+        (tenant.adminEmail && e.email && e.email.toLowerCase() === tenant.adminEmail.toLowerCase())
+      );
+
+      // If no specific employees list, fallback to db.users for this company
+      const employeesToNotify = [...compEmployees];
+      if (employeesToNotify.length === 0) {
+        (db.users || []).filter(u => 
+          String(u.tenantId || u.companyId || '').toLowerCase() === String(compId).toLowerCase()
+        ).forEach(u => employeesToNotify.push({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          employeeId: u.employeeId || 'EMP-001'
+        }));
+      }
+
+      for (const emp of employeesToNotify) {
+        if (!emp.email) continue;
+        const dedupKey = `${emp.email}_${todayStr}_${type}`;
+        if (!force && sentShiftRemindersToday.has(dedupKey)) {
+          continue; // Already notified today
+        }
+
+        // Check attendance record for today
+        const todayAttendance = (db.attendance || []).find(a => 
+          a.date === todayStr && 
+          (
+            (emp.employeeId && (String(a.employeeId) === String(emp.employeeId) || String(a.id) === String(emp.employeeId))) ||
+            (emp.name && a.employeeName === emp.name) ||
+            (a.companyId === compId && a.employeeName === emp.name)
+          )
+        );
+
+        if (type === 'checkin') {
+          // If NOT punched in yet today
+          if (!todayAttendance || !todayAttendance.checkIn) {
+            sentShiftRemindersToday.set(dedupKey, new Date().toISOString());
+            sendAttendanceShiftReminderEmail({
+              toEmail: emp.email,
+              employeeName: emp.name || 'Staff Member',
+              companyName: compName,
+              type: 'checkin',
+              shiftTime: shiftStart
+            });
+            dispatchedCount++;
+          }
+        } else if (type === 'checkout') {
+          // If punched in BUT NOT punched out yet
+          if (todayAttendance && todayAttendance.checkIn && !todayAttendance.checkOut) {
+            sentShiftRemindersToday.set(dedupKey, new Date().toISOString());
+            sendAttendanceShiftReminderEmail({
+              toEmail: emp.email,
+              employeeName: emp.name || 'Staff Member',
+              companyName: compName,
+              type: 'checkout',
+              shiftTime: shiftEnd
+            });
+            dispatchedCount++;
+          }
+        }
+      }
+    }
+
+    return { success: true, dispatchedCount };
+  } catch (err) {
+    console.error(`[ATTENDANCE SHIFT REMINDER] ❌ Dispatch failure:`, err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+let shiftSchedulerTimer = null;
+function startAttendanceShiftScheduler() {
+  if (shiftSchedulerTimer) return;
+  console.log(`[ATTENDANCE SHIFT SCHEDULER] ⏰ Background Attendance Shift Reminder Engine started (1-min resolution).`);
+
+  shiftSchedulerTimer = setInterval(() => {
+    try {
+      const now = new Date();
+      // Format current time in 24-hr HH:MM based on Asia/Kolkata (IST, UTC+5:30)
+      const formatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      const currentHHMM = formatter.format(now); // e.g. "09:30"
+
+      const db = readDb();
+      const tenants = db.tenants || [];
+
+      for (const tenant of tenants) {
+        const start = (tenant.workdayStart || '09:00').trim();
+        const end = (tenant.workdayEnd || '17:00').trim();
+
+        if (currentHHMM === start) {
+          dispatchShiftRemindersForCompany(tenant.id, 'checkin', false);
+        }
+        if (currentHHMM === end) {
+          dispatchShiftRemindersForCompany(tenant.id, 'checkout', false);
+        }
+      }
+    } catch (schedErr) {
+      console.warn(`[ATTENDANCE SHIFT SCHEDULER] Error during cycle:`, schedErr.message);
+    }
+  }, 60 * 1000);
+}
+
 function getActiveRazorpayCredentials() {
   let keyId = (process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || '').trim();
   let keySecret = (process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '').trim();
@@ -1846,6 +2073,27 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     } catch (err) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to record punch out' }));
+    }
+    return;
+  }
+
+  // 4.215 DISPATCH ATTENDANCE SHIFT REMINDER NOTIFICATION API
+  if (pathname === '/api/attendance/send-shift-reminder' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const decoded = verifyToken(req.headers['authorization']);
+      const compId = body.companyId || req.headers['x-tenant-id'] || decoded?.tenantId || decoded?.companyId;
+      const type = body.type || 'checkin';
+      const result = await dispatchShiftRemindersForCompany(compId, type, true);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: true, 
+        message: `Shift attendance reminders (${type}) processed successfully`, 
+        dispatchedCount: result.dispatchedCount 
+      }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message || 'Failed to send shift reminder' }));
     }
     return;
   }
@@ -4384,5 +4632,6 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
 
 server.listen(PORT, () => {
   printServerBanner(PORT);
+  startAttendanceShiftScheduler();
 });
 
