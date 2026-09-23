@@ -13,11 +13,11 @@ const loginOtpStore = new Map();
 async function sendOtpNotification(toEmail, userName, otpCode) {
   console.log(`[AUTH 2FA] 🛡️ Login OTP for ${userName} <${toEmail}>: [${otpCode}] (Valid for 10 minutes)`);
   try {
-    const smtpHost = (process.env.SMTP_HOST || '').trim();
-    const smtpPort = parseInt(process.env.SMTP_PORT || '587');
-    const smtpUser = (process.env.SMTP_USER || '').trim();
-    const smtpPass = (process.env.SMTP_PASS || '').trim();
-    const smtpFrom = (process.env.SMTP_FROM || smtpUser || 'noreply@itlc-hrms.com').trim();
+    const smtpHost = (process.env.SMTP_HOST || 'smtp.hostinger.com').trim();
+    const smtpPort = parseInt(process.env.SMTP_PORT || '465');
+    const smtpUser = (process.env.SMTP_USER || 'no-reply@itlcindia.com').trim();
+    const smtpPass = (process.env.SMTP_PASS || 'Itlc@122').trim();
+    const smtpFrom = (process.env.SMTP_FROM || `"ITLC Enterprise HRMS" <${smtpUser}>`).trim();
 
     if (smtpHost && smtpUser && smtpPass) {
       const nodemailer = require('nodemailer');

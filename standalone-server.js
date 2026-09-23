@@ -70,11 +70,11 @@ async function sendOtpNotification(toEmail, userName, otpCode) {
   // Attempt real SMTP dispatch if credentials exist in .env or globalSettings
   try {
     const db = readDb();
-    const smtpHost = (process.env.SMTP_HOST || db.globalSettings?.smtpHost || db.globalSettings?.smtpServer || '').trim();
-    const smtpPort = parseInt(process.env.SMTP_PORT || db.globalSettings?.smtpPort || '587');
-    const smtpUser = (process.env.SMTP_USER || db.globalSettings?.smtpUser || db.globalSettings?.smtpEmail || '').trim();
-    const smtpPass = (process.env.SMTP_PASS || db.globalSettings?.smtpPass || db.globalSettings?.smtpPassword || '').trim();
-    const smtpFrom = (process.env.SMTP_FROM || db.globalSettings?.smtpFrom || smtpUser || 'noreply@itlc-hrms.com').trim();
+    const smtpHost = (process.env.SMTP_HOST || db.globalSettings?.smtpHost || db.globalSettings?.smtpServer || 'smtp.hostinger.com').trim();
+    const smtpPort = parseInt(process.env.SMTP_PORT || db.globalSettings?.smtpPort || '465');
+    const smtpUser = (process.env.SMTP_USER || db.globalSettings?.smtpUser || db.globalSettings?.smtpEmail || 'no-reply@itlcindia.com').trim();
+    const smtpPass = (process.env.SMTP_PASS || db.globalSettings?.smtpPass || db.globalSettings?.smtpPassword || 'Itlc@122').trim();
+    const smtpFrom = (process.env.SMTP_FROM || db.globalSettings?.smtpFrom || `"ITLC Enterprise HRMS" <${smtpUser}>`).trim();
 
     if (smtpHost && smtpUser && smtpPass) {
       const transporter = nodemailer.createTransport({

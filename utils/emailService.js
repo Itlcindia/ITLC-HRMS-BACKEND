@@ -1,11 +1,22 @@
 const nodemailer = require('nodemailer');
+const fs = require('fs');
+const path = require('path');
 
-// Load environment credentials or default to a dummy logger
-const smtpHost = process.env.SMTP_HOST || '';
-const smtpPort = parseInt(process.env.SMTP_PORT || '587');
-const smtpUser = process.env.SMTP_USER || '';
-const smtpPass = process.env.SMTP_PASS || '';
-const smtpFrom = process.env.SMTP_FROM || smtpUser || 'noreply@itlc-hrms.com';
+let dbSettings = {};
+try {
+  const dbPath = path.join(__dirname, '..', 'database.json');
+  if (fs.existsSync(dbPath)) {
+    const raw = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+    dbSettings = raw.globalSettings || {};
+  }
+} catch {}
+
+// Load environment credentials or default to database.json / Hostinger settings
+const smtpHost = (process.env.SMTP_HOST || dbSettings.smtpHost || dbSettings.smtpServer || 'smtp.hostinger.com').trim();
+const smtpPort = parseInt(process.env.SMTP_PORT || dbSettings.smtpPort || '465');
+const smtpUser = (process.env.SMTP_USER || dbSettings.smtpUser || dbSettings.smtpEmail || 'no-reply@itlcindia.com').trim();
+const smtpPass = (process.env.SMTP_PASS || dbSettings.smtpPass || dbSettings.smtpPassword || 'Itlc@122').trim();
+const smtpFrom = (process.env.SMTP_FROM || dbSettings.smtpFrom || `"ITLC Enterprise HRMS" <${smtpUser}>`).trim();
 
 let transporter;
 
@@ -19,7 +30,7 @@ if (smtpHost && smtpUser && smtpPass) {
       pass: smtpPass
     }
   });
-  console.log("Email Service initialized with SMTP settings.");
+  console.log("Email Service initialized with Hostinger SMTP settings.");
 } else {
   console.log("Email Service: No SMTP credentials found. Falling back to console logger.");
 }
