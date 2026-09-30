@@ -974,7 +974,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       const isSuper = normalizedRole === 'Super Owner' || email === 'priyanshupushkar263@gmail.com';
       const isStaff = normalizedRole === 'Employee' || normalizedRole === 'Manager';
       const is2FaRequired = tenant?.twoFactorEnabled === true || db.securitySettings?.twoFactorAuth === true;
-      const allowDirectLogin = isSuper || directLogin === true || bypassOtp === true || (isStaff && !is2FaRequired);
+      const allowDirectLogin = isSuper || directLogin === true || bypassOtp === true || !is2FaRequired;
 
       if (!allowDirectLogin) {
         // ENFORCE OTP FOR COMPANY ACCOUNTS
