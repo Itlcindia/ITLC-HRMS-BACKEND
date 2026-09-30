@@ -1231,7 +1231,9 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
 
       // Check if Super Owner or direct password login requested
       const isSuper = normalizedRole === 'Super Owner' || email === 'priyanshupushkar263@gmail.com';
-      const allowDirectLogin = isSuper || directLogin === true || bypassOtp === true;
+      const isStaff = normalizedRole === 'Employee' || normalizedRole === 'Manager';
+      const is2FaRequired = tenant?.twoFactorEnabled === true || db.securitySettings?.twoFactorAuth === true;
+      const allowDirectLogin = isSuper || directLogin === true || bypassOtp === true || (isStaff && !is2FaRequired);
 
       if (!allowDirectLogin) {
         // ENFORCE OTP FOR COMPANY ACCOUNTS
@@ -4475,13 +4477,20 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       }
     ];
 
+    if (!Array.isArray(db.deletedPlanIds)) db.deletedPlanIds = [];
+    const deletedPlanSet = new Set((db.deletedPlanIds || []).map(id => String(id).toLowerCase().trim()));
+
     if (!Array.isArray(db.subscriptionPlans) || db.subscriptionPlans.length === 0) {
-      db.subscriptionPlans = defaultPlans;
+      db.subscriptionPlans = defaultPlans.filter(p => !deletedPlanSet.has(String(p.id).toLowerCase().trim()));
       writeDb(db);
     } else {
-      let updated = false;
+      const filtered = db.subscriptionPlans.filter(p => !deletedPlanSet.has(String(p.id).toLowerCase().trim()));
+      let updated = filtered.length !== db.subscriptionPlans.length;
+      db.subscriptionPlans = filtered;
+
       for (const dp of defaultPlans) {
-        if (!db.subscriptionPlans.some(p => p.id === dp.id)) {
+        const dpId = String(dp.id).toLowerCase().trim();
+        if (!deletedPlanSet.has(dpId) && !db.subscriptionPlans.some(p => String(p.id).toLowerCase().trim() === dpId)) {
           db.subscriptionPlans.push(dp);
           updated = true;
         }
@@ -4569,13 +4578,18 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
   if (pathname.startsWith('/api/superowner/plans/') && req.method === 'DELETE') {
     try {
       const id = pathname.replace('/api/superowner/plans/', '');
+      const cleanId = String(id).toLowerCase().trim();
       const db = readDb();
-      if (Array.isArray(db.subscriptionPlans)) {
-        db.subscriptionPlans = db.subscriptionPlans.filter(p => p.id !== id);
-        writeDb(db);
+      if (!Array.isArray(db.deletedPlanIds)) db.deletedPlanIds = [];
+      if (!db.deletedPlanIds.includes(cleanId)) {
+        db.deletedPlanIds.push(cleanId);
       }
+      if (Array.isArray(db.subscriptionPlans)) {
+        db.subscriptionPlans = db.subscriptionPlans.filter(p => String(p.id).toLowerCase().trim() !== cleanId);
+      }
+      writeDb(db);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, message: 'Plan deleted' }));
+      res.end(JSON.stringify({ success: true, message: 'Plan deleted successfully', deletedId: id }));
       return;
     } catch (err) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
