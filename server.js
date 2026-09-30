@@ -1087,7 +1087,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       });
 
       // Check if tenant is suspended or expired
-      if (tenant && (tenant.status === 'suspended' || tenant.status === 'inactive' || tenant.status === 'deactivated')) {
+      if (tenant && !tenant.bypassSubscription && (tenant.status === 'suspended' || tenant.status === 'inactive' || tenant.status === 'deactivated')) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ 
           success: false, 
@@ -1254,8 +1254,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
           success: true,
           otpRequired: true,
           email: user.email,
-          message: `A secure 6-digit verification OTP code has been sent to your email (${user.email}). Please enter it to complete login.`,
-          devOtp: otp
+          message: `A secure 6-digit verification OTP code has been sent to your email (${user.email}). Please enter it to complete login.`
         }));
         return;
       }
@@ -1383,8 +1382,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ 
         success: true, 
-        message: `A fresh 6-digit OTP code has been sent to your email (${email}).`,
-        devOtp: freshOtp
+        message: `A fresh 6-digit OTP code has been sent to your email (${email}).`
       }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -2001,6 +1999,9 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
           ...existingTenant, 
           ...updates, 
           id: existingTenant.id,
+          bypassSubscription: updates.bypassSubscription !== undefined ? Boolean(updates.bypassSubscription) : Boolean(existingTenant.bypassSubscription),
+          subscriptionStatus: updates.bypassSubscription ? 'active' : (updates.subscriptionStatus || existingTenant.subscriptionStatus || 'active'),
+          status: updates.bypassSubscription ? 'active' : (updates.status || existingTenant.status || 'active'),
           ...(newPass ? { password: newPass, adminPassword: newPass } : {}),
           ...(newEmail ? { email: newEmail, adminEmail: newEmail } : {}),
           ...(newName ? { name: newName, companyName: newName } : {})
@@ -2095,19 +2096,89 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       tenant = (db.tenants || [])[0];
     }
     if (tenant) {
+      const isBypass = Boolean(tenant.bypassSubscription);
       tenant = {
         ...tenant,
-        status: tenant.status || 'active',
-        subscriptionStatus: tenant.subscriptionStatus || (tenant.paidAt || tenant.lastPayment || tenant.transactionId ? 'active' : 'unpaid'),
-        subscriptionPlanId: tenant.subscriptionPlanId || tenant.planId || tenant.plan || 'demo',
-        planId: tenant.subscriptionPlanId || tenant.planId || tenant.plan || 'demo',
-        plan: tenant.subscriptionPlanId || tenant.planId || tenant.plan || 'demo',
-        seatLimit: Number(tenant.seatLimit || tenant.maxEmployees || tenant.staffCapacity || 50),
+        status: isBypass ? 'active' : (tenant.status || 'active'),
+        subscriptionStatus: isBypass ? 'active' : (tenant.subscriptionStatus || (tenant.paidAt || tenant.lastPayment || tenant.transactionId ? 'active' : 'unpaid')),
+        subscriptionPlanId: tenant.subscriptionPlanId || tenant.planId || tenant.plan || 'starter',
+        planId: tenant.subscriptionPlanId || tenant.planId || tenant.plan || 'starter',
+        plan: tenant.subscriptionPlanId || tenant.planId || tenant.plan || 'starter',
+        bypassSubscription: isBypass,
+        seatLimit: Number(tenant.seatLimit || tenant.maxEmployees || tenant.staffCapacity || 100),
         storageLimitGb: Number(tenant.storageLimitGb || tenant.storageLimit || 50)
       };
     }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(tenant || {}));
+    return;
+  }
+
+  // 4.010 CHOOSE SUBSCRIPTION PLAN API (/api/admin/company/choose-plan)
+  if ((pathname === '/api/admin/company/choose-plan' || pathname === '/api/company/choose-plan') && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const db = readDb();
+      const decoded = verifyToken(req.headers['authorization']);
+      const tokenEmail = (decoded?.email || '').toLowerCase().trim();
+      const compId = body?.companyId || body?.id || body?.tenantId || parsedUrl.searchParams.get('companyId') || req.headers['x-tenant-id'] || decoded?.tenantId || decoded?.companyId;
+
+      let idx = (db.tenants || []).findIndex(t => 
+        (compId && (String(t.id).toLowerCase() === String(compId).toLowerCase() || String(t.name || '').toLowerCase() === String(compId).toLowerCase())) ||
+        (tokenEmail && (t.adminEmail?.toLowerCase() === tokenEmail || t.email?.toLowerCase() === tokenEmail))
+      );
+
+      if (idx === -1 && (db.tenants || []).length > 0) {
+        idx = 0;
+      }
+
+      const planId = body.planId || 'growth';
+      const plan = (db.subscriptionPlans || []).find(p => p.id === planId) || {
+        id: planId,
+        name: String(planId).toUpperCase(),
+        seatLimit: 100,
+        storageLimitGb: 50
+      };
+
+      if (idx !== -1) {
+        db.tenants[idx] = {
+          ...db.tenants[idx],
+          subscriptionPlanId: plan.id,
+          planId: plan.id,
+          plan: plan.id,
+          planName: plan.name || String(plan.id).toUpperCase(),
+          status: 'active',
+          subscriptionStatus: 'active',
+          seatLimit: Number(plan.seatLimit || plan.employeeLimit || db.tenants[idx].seatLimit || 100),
+          maxEmployees: Number(plan.seatLimit || plan.employeeLimit || db.tenants[idx].seatLimit || 100),
+          storageLimitGb: Number(plan.storageLimitGb || plan.storageLimit || db.tenants[idx].storageLimitGb || 50),
+          lastUpdated: new Date().toISOString()
+        };
+
+        const tId = String(db.tenants[idx].id);
+        (db.users || []).forEach(u => {
+          if (String(u.tenantId) === tId || String(u.companyId) === tId) {
+            u.subscriptionPlanId = plan.id;
+            u.subscriptionStatus = 'active';
+          }
+        });
+
+        writeDb(db);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: true, 
+          message: `Plan ${plan.name || plan.id} activated successfully!`, 
+          company: db.tenants[idx] 
+        }));
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, planId }));
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message || 'Failed to update plan' }));
+    }
     return;
   }
 

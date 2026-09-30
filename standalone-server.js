@@ -995,8 +995,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
           success: true,
           otpRequired: true,
           email: user.email,
-          message: `A secure 6-digit verification OTP code has been sent to your email (${user.email}). Please enter it to complete login.`,
-          devOtp: otp
+          message: `A secure 6-digit verification OTP code has been sent to your email (${user.email}). Please enter it to complete login.`
         }));
         return;
       }
@@ -1124,8 +1123,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ 
         success: true, 
-        message: `A fresh 6-digit OTP code has been sent to your email (${email}).`,
-        devOtp: freshOtp
+        message: `A fresh 6-digit OTP code has been sent to your email (${email}).`
       }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -1621,6 +1619,74 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     const tenant = (db.tenants || []).find(t => t.id === compId || (t.adminEmail && t.adminEmail.toLowerCase() === compId?.toLowerCase())) || (db.tenants || [])[0];
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(tenant || {}));
+    return;
+  }
+
+  // 4.010 CHOOSE SUBSCRIPTION PLAN API (/api/admin/company/choose-plan)
+  if ((pathname === '/api/admin/company/choose-plan' || pathname === '/api/company/choose-plan') && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const db = readDb();
+      const decoded = verifyToken(req.headers['authorization']);
+      const tokenEmail = (decoded?.email || '').toLowerCase().trim();
+      const compId = body?.companyId || body?.id || body?.tenantId || parsedUrl.searchParams.get('companyId') || req.headers['x-tenant-id'] || decoded?.tenantId || decoded?.companyId;
+
+      let idx = (db.tenants || []).findIndex(t => 
+        (compId && (String(t.id).toLowerCase() === String(compId).toLowerCase() || String(t.name || '').toLowerCase() === String(compId).toLowerCase())) ||
+        (tokenEmail && (t.adminEmail?.toLowerCase() === tokenEmail || t.email?.toLowerCase() === tokenEmail))
+      );
+
+      if (idx === -1 && (db.tenants || []).length > 0) {
+        idx = 0;
+      }
+
+      const planId = body.planId || 'growth';
+      const plan = (db.subscriptionPlans || []).find(p => p.id === planId) || {
+        id: planId,
+        name: String(planId).toUpperCase(),
+        seatLimit: 100,
+        storageLimitGb: 50
+      };
+
+      if (idx !== -1) {
+        db.tenants[idx] = {
+          ...db.tenants[idx],
+          subscriptionPlanId: plan.id,
+          planId: plan.id,
+          plan: plan.id,
+          planName: plan.name || String(plan.id).toUpperCase(),
+          status: 'active',
+          subscriptionStatus: 'active',
+          seatLimit: Number(plan.seatLimit || plan.employeeLimit || db.tenants[idx].seatLimit || 100),
+          maxEmployees: Number(plan.seatLimit || plan.employeeLimit || db.tenants[idx].seatLimit || 100),
+          storageLimitGb: Number(plan.storageLimitGb || plan.storageLimit || db.tenants[idx].storageLimitGb || 50),
+          lastUpdated: new Date().toISOString()
+        };
+
+        const tId = String(db.tenants[idx].id);
+        (db.users || []).forEach(u => {
+          if (String(u.tenantId) === tId || String(u.companyId) === tId) {
+            u.subscriptionPlanId = plan.id;
+            u.subscriptionStatus = 'active';
+          }
+        });
+
+        writeDb(db);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: true, 
+          message: `Plan ${plan.name || plan.id} activated successfully!`, 
+          company: db.tenants[idx] 
+        }));
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, planId }));
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message || 'Failed to update plan' }));
+    }
     return;
   }
 

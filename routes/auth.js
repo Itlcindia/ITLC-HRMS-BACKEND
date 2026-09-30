@@ -229,7 +229,7 @@ router.post('/login', async (req, res) => {
     if (user.companyId && user.role !== 'Super Owner') {
       const company = await Company.findByPk(user.companyId);
       if (company) {
-        if (company.status === 'expired' || company.status === 'suspended') {
+        if (!company.bypassSubscription && (company.status === 'expired' || company.status === 'suspended')) {
           return res.status(403).json({ 
             error: `Subscription ${company.status.toUpperCase()}: The subscription for "${company.name}" has expired. Please renew your plan to continue.` 
           });
@@ -264,8 +264,7 @@ router.post('/login', async (req, res) => {
         success: true,
         otpRequired: true,
         email: user.email,
-        message: `A secure 6-digit verification OTP code has been sent to your email (${user.email}). Please enter it to complete login.`,
-        devOtp: otp
+        message: `A secure 6-digit verification OTP code has been sent to your email (${user.email}). Please enter it to complete login.`
       });
     }
 
@@ -362,8 +361,7 @@ router.post('/resend-otp', async (req, res) => {
 
     res.json({
       success: true,
-      message: `A fresh 6-digit OTP code has been sent to your email (${cleanEmail}).`,
-      devOtp: freshOtp
+      message: `A fresh 6-digit OTP code has been sent to your email (${cleanEmail}).`
     });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to resend OTP' });
