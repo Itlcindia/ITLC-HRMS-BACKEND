@@ -1856,6 +1856,10 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
           avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(adminName)}&background=4f46e5&color=fff`,
           joiningDate: new Date().toISOString().split('T')[0],
           employmentType: 'Full-Time Permanent',
+          password: adminPass,
+          adminPassword: adminPass,
+          passwordHash: uHash.hash,
+          salt: uHash.salt,
           documents: []
         };
         db.employees = [adminEmpObj, ...(db.employees || []).filter(e => (e.email || '').toLowerCase() !== adminEmail)];
@@ -3074,6 +3078,21 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     return;
   }
 
+  if (pathname.match(/^\/api\/admin\/expenses\/[^/]+$/) && req.method === 'DELETE') {
+    try {
+      const expId = pathname.split('/').pop();
+      const db = readDb();
+      db.expenses = (db.expenses || []).filter(e => String(e.id) !== String(expId));
+      writeDb(db);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to delete expense' }));
+    }
+    return;
+  }
+
   // ========================================================
   // 4.26 HELPDESK SUPPORT TICKETS APIS
   // ========================================================
@@ -3148,13 +3167,18 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       taskList = taskList.filter(t => t.companyId === companyId || t.tenantId === companyId);
     }
 
-    if (pathname === '/api/employee/tasks' && (empId || empEmail)) {
+    const empName = (parsedUrl.searchParams.get('employeeName') || '').toLowerCase().trim();
+    if (pathname === '/api/employee/tasks' && (empId || empEmail || empName)) {
       const emailLower = (empEmail || '').toLowerCase().trim();
-      taskList = taskList.filter(t => {
+      const filtered = taskList.filter(t => {
         const idMatches = empId && (String(t.assignedTo) === String(empId) || String(t.assignedToId) === String(empId));
         const emailMatches = emailLower && t.assignedToEmail && t.assignedToEmail.toLowerCase().trim() === emailLower;
-        return idMatches || emailMatches;
+        const nameMatches = empName && t.assignedToName && t.assignedToName.toLowerCase().trim() === empName;
+        return idMatches || emailMatches || nameMatches;
       });
+      if (filtered.length > 0) {
+        taskList = filtered;
+      }
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -3480,6 +3504,18 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         }
         return a;
       });
+
+      // Also sync matching request in db.assetRequests
+      if (db.assetRequests) {
+        db.assetRequests = db.assetRequests.map(r => {
+          if (String(r.id) === String(astId)) {
+            const reqStatus = (data.status === 'Assigned' || data.status === 'Allocated') ? 'Approved' : (data.status === 'Rejected' ? 'Rejected' : data.status);
+            return { ...r, status: reqStatus, ...data };
+          }
+          return r;
+        });
+      }
+
       writeDb(db);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, asset: updated }));
@@ -3513,13 +3549,32 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         id: `ast_req_${Date.now()}`,
         requestedBy: data.requestedBy || 'Authorized Employee',
         assetType: data.assetType || data.name || 'Hardware',
-        reason: data.reason || 'Work requirement',
+        assetName: data.assetName || data.name || data.assetType || 'Device',
+        reason: data.reason || data.requestComment || 'Work requirement',
+        requestComment: data.requestComment || data.reason || 'Work requirement',
         status: 'Pending',
         requestedDate: new Date().toISOString().split('T')[0],
         companyId: data.companyId || req.headers['x-tenant-id'] || 'comp_1',
         ...data
       };
       db.assetRequests = [newReq, ...(db.assetRequests || [])];
+
+      // Also create record in db.assets so Admin Asset Management immediately displays it under requests
+      const newAsset = {
+        id: newReq.id,
+        assetName: newReq.assetName,
+        assetType: newReq.assetType,
+        employeeName: newReq.requestedBy,
+        assignedTo: newReq.requestedBy,
+        assignedName: newReq.requestedBy,
+        requestComment: newReq.requestComment,
+        status: 'Requested',
+        date: newReq.requestedDate,
+        companyId: newReq.companyId,
+        tenantId: newReq.companyId
+      };
+      db.assets = [newAsset, ...(db.assets || [])];
+
       writeDb(db);
       res.writeHead(201, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(newReq));

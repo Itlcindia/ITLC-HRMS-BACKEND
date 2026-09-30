@@ -473,6 +473,8 @@ function generateToken(user) {
     email: user.email, 
     role: user.role, 
     name: user.name,
+    tenantId: user.tenantId || user.companyId,
+    companyId: user.companyId || user.tenantId,
     exp 
   })).toString('base64url');
   
@@ -807,6 +809,204 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     return;
   }
 
+  // 2.2 AUTH: PUBLIC COMPANY REGISTRATION (/api/auth/register-company & /api/auth/register)
+  if ((pathname === '/api/auth/register-company' || pathname === '/api/auth/register') && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const db = readDb();
+      
+      const compName = (body.companyName || body.name || 'New Enterprise Client').trim();
+      const adminEmail = (body.companyEmail || body.email || body.adminEmail || '').toLowerCase().trim();
+      const adminPass = (body.password || body.adminPassword || body.customPassword || 'Admin@123').trim();
+      const adminName = (body.ownerName || body.adminName || `${compName} Admin`).trim();
+      const phone = body.companyPhone || body.phone || body.adminPhone || '';
+      const compId = body.id || `comp_${Date.now()}`;
+      
+      if (!adminEmail) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Company email is required' }));
+        return;
+      }
+      
+      const planKey = (body.subscriptionPlanId || body.planId || body.plan || 'starter').toLowerCase();
+      let defaultSeats = 50;
+      let defaultStorage = 50;
+      if (planKey.includes('demo') || planKey.includes('trial')) {
+        defaultSeats = 10;
+        defaultStorage = 10;
+      } else if (planKey.includes('premium') || planKey.includes('enterprise') || planKey.includes('pro')) {
+        defaultSeats = 100;
+        defaultStorage = 100;
+      }
+      const seatCount = Number(body.seatLimit || body.maxEmployees || body.userSeatLimit || body.staffCapacity || body.employeesCount || defaultSeats);
+      const storageGb = Number(body.storageLimitGb || body.storageLimit || defaultStorage);
+
+      const defaultModules = {
+        dashboard: true,
+        attendance: true,
+        leave: true,
+        payroll: true,
+        recruitment: true,
+        performance: true,
+        assets: true,
+        training: true,
+        expenses: true,
+        tickets: true,
+        crm: true,
+        ...(body.features || body.modulesEnabled || {})
+      };
+
+      const newTenant = {
+        id: compId,
+        companyName: compName,
+        name: compName,
+        industry: body.industry || body.industryType || 'Information Technology',
+        plan: planKey,
+        planId: planKey,
+        subscriptionPlanId: planKey,
+        subscriptionStatus: body.subscriptionStatus || (body.paidAt || body.transactionId ? 'active' : 'unpaid'),
+        suite: body.suite || 'unified',
+        billingCycle: body.billingCycle || 'monthly',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 30 * 86400000).toISOString(),
+        adminName: adminName,
+        adminEmail: adminEmail,
+        adminPhone: phone,
+        country: body.country || 'India',
+        state: body.stateName || body.state || '',
+        city: body.cityName || body.city || '',
+        staffCapacity: seatCount,
+        maxEmployees: seatCount,
+        seatLimit: seatCount,
+        userSeatLimit: seatCount,
+        employeesCount: seatCount,
+        storageLimit: storageGb,
+        storageLimitGb: storageGb,
+        activeUsers: 1,
+        password: adminPass,
+        adminPassword: adminPass,
+        modulesEnabled: defaultModules,
+        features: {
+          crmDealsKanban: true,
+          crmInvoicingGST: true,
+          crmGpsMeetings: true,
+          crmAiCopilot: true,
+          crmWhatsApp: true,
+          hrmsBiometricRadar: true,
+          hrmsMobileGpsPunch: true,
+          hrmsSalaryPayroll: true,
+          hrmsShiftLeave: true,
+          hrmsAssetsTraining: true,
+          ...defaultModules
+        }
+      };
+
+      db.tenants = [newTenant, ...(db.tenants || []).filter(t => t.id !== compId && (t.adminEmail || t.email || '').toLowerCase() !== adminEmail)];
+
+      const uHash = hashPassword(adminPass);
+      const adminUserObj = {
+        id: Date.now(),
+        tenantId: compId,
+        companyId: compId,
+        name: adminName,
+        email: adminEmail,
+        role: 'Company Admin',
+        status: 'Active',
+        avatar: (adminName || 'AD').slice(0, 2).toUpperCase(),
+        passwordHash: uHash.hash,
+        salt: uHash.salt,
+        password: adminPass,
+        adminPassword: adminPass
+      };
+      db.users = [adminUserObj, ...(db.users || []).filter(u => (u.email || '').toLowerCase() !== adminEmail)];
+
+      const adminEmpObj = {
+        id: Date.now(),
+        employeeId: 'EMP-001',
+        tenantId: compId,
+        companyId: compId,
+        name: adminName,
+        email: adminEmail,
+        role: 'Company Admin',
+        systemRole: 'Company Admin',
+        department: 'Management',
+        designation: 'Managing Director / Chief Admin',
+        status: 'Active',
+        phone: phone,
+        salary: '₹1,50,000',
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(adminName)}&background=4f46e5&color=fff`,
+        joiningDate: new Date().toISOString().split('T')[0],
+        employmentType: 'Full-Time Permanent',
+        password: adminPass,
+        documents: []
+      };
+      db.employees = [adminEmpObj, ...(db.employees || []).filter(e => (e.email || '').toLowerCase() !== adminEmail)];
+
+      // Record initial subscription invoice / payment for Super Owner (only if paid upfront)
+      const isUnpaidPreview = planKey === 'none' || planKey === 'unselected' || body.subscriptionStatus === 'unpaid';
+      if (!isUnpaidPreview) {
+        if (!Array.isArray(db.payments)) db.payments = [];
+        const planPrice = Number(body.priceMonthly || (planKey.includes('premium') ? 999 : planKey.includes('demo') ? 199 : 499));
+        const payRecord = {
+          id: `pay_${Date.now()}`,
+          invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
+          companyId: compId,
+          companyName: compName,
+          amount: planPrice,
+          currency: 'INR',
+          gateway: body.paymentMethod || 'razorpay',
+          status: 'successful',
+          date: new Date().toISOString().split('T')[0],
+          planId: planKey,
+          planName: planKey.toUpperCase() + ' TIER',
+          transactionId: body.transactionId || `txn_${Date.now()}`
+        };
+        db.payments.unshift(payRecord);
+      }
+
+      // Audit Log for Super Owner
+      if (!Array.isArray(db.auditLogs)) db.auditLogs = [];
+      db.auditLogs.unshift({
+        id: Date.now(),
+        action: isUnpaidPreview ? "Company Registered (Free Preview)" : "Client Onboarded",
+        detail: isUnpaidPreview 
+          ? `"${compName}" registered new workspace. Modules locked pending subscription.` 
+          : `"${compName}" subscribed to ${planKey.toUpperCase()} plan. Payment verified.`,
+        actor: adminName,
+        category: "subscription",
+        timestamp: new Date().toLocaleTimeString()
+      });
+
+      // Clear from deleted blacklist if re-registered
+      if (Array.isArray(db.deletedCompanies)) {
+        db.deletedCompanies = db.deletedCompanies.filter(d => {
+          if (typeof d === 'string') return d.toLowerCase() !== adminEmail && d !== compId;
+          return d.id !== compId && d.email?.toLowerCase() !== adminEmail;
+        });
+      }
+
+      writeDb(db);
+
+      const token = generateToken(adminUserObj);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        message: 'Company registered successfully',
+        token,
+        tenant: newTenant,
+        company: newTenant,
+        user: { ...adminUserObj, role: 'Company Admin' }
+      }));
+      return;
+    } catch (err) {
+      console.error('Registration error:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message || 'Registration failed' }));
+      return;
+    }
+  }
+
   // 3. AUTH: LOGIN
   if (pathname === '/api/auth/login' && req.method === 'POST') {
     try {
@@ -853,23 +1053,62 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         }
       }
 
-      // 1. Check db.tenants first
+      // Check if this company / email was deleted by Super Owner
+      const isDeleted = (db.deletedCompanies || []).some(d => {
+        if (!d) return false;
+        if (typeof d === 'string') {
+          const dl = d.toLowerCase().trim();
+          return dl === email || (inputCompanyId && dl === String(inputCompanyId).toLowerCase().trim());
+        }
+        const dEmail = (d.email || '').toLowerCase().trim();
+        const dId = String(d.id || '').toLowerCase().trim();
+        if (email && (dEmail === email || (Array.isArray(d.emails) && d.emails.includes(email)))) return true;
+        if (inputCompanyId && dId === String(inputCompanyId).toLowerCase().trim()) return true;
+        return false;
+      });
+
+      if (isDeleted) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: false, 
+          message: '❌ This company workspace has been permanently deleted by the Super Owner platform administrator. Access is revoked.' 
+        }));
+        return;
+      }
+
+      // 1. Look for tenant across db.tenants
       const tenant = (db.tenants || []).find(t => {
         const tEmail = (t.adminEmail || t.email || t.ownerEmail || '').toLowerCase().trim();
         const tId = String(t.id || '').toLowerCase().trim();
         const tCompId = String(t.companyId || '').toLowerCase().trim();
-        return email && (tEmail === email || tId === email || tCompId === email);
+        if (email && (tEmail === email || tId === email || tCompId === email)) return true;
+        if (inputCompanyId && (tId === String(inputCompanyId).toLowerCase().trim() || tCompId === String(inputCompanyId).toLowerCase().trim())) return true;
+        return false;
       });
+
+      // Check if tenant is suspended or expired
+      if (tenant && !tenant.bypassSubscription && (tenant.status === 'suspended' || tenant.status === 'inactive' || tenant.status === 'deactivated')) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: false, 
+          message: `This company account has been ${tenant.status} by the Super Owner platform administrator. Please contact support.` 
+        }));
+        return;
+      }
+
+      // 2. Look for user in db.users (by email or id)
       const userInDb = (db.users || []).find(u => {
         const uEmail = (u.email || '').toLowerCase().trim();
         const uId = String(u.id || '').toLowerCase().trim();
-        return email && (uEmail === email || uId === email);
+        return (email && (uEmail === email || uId === email));
       });
+
+      // 3. Look for employee in db.employees (by email, employeeId, or id)
       const empInDb = (db.employees || []).find(e => {
         const eEmail = (e.email || '').toLowerCase().trim();
         const eEmpId = String(e.employeeId || '').toLowerCase().trim();
         const eId = String(e.id || '').toLowerCase().trim();
-        return email && (eEmail === email || eEmpId === email || eId === email);
+        return (email && (eEmail === email || eEmpId === email || eId === email));
       });
 
       let user = null;
@@ -918,7 +1157,25 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         return;
       }
 
+      if (user && (user.companyId || user.tenantId)) {
+        const uCompId = String(user.companyId || user.tenantId).toLowerCase().trim();
+        const isUserCompanyDeleted = (db.deletedCompanies || []).some(d => {
+          if (!d) return false;
+          if (typeof d === 'string') return d.toLowerCase().trim() === uCompId;
+          return String(d.id || '').toLowerCase().trim() === uCompId;
+        });
+        if (isUserCompanyDeleted) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ 
+            success: false, 
+            message: '❌ This company workspace has been permanently deleted by the Super Owner platform administrator. Access is revoked.' 
+          }));
+          return;
+        }
+      }
+
       let isValid = false;
+      // 1. Salted SHA-256 hash check across user, userInDb, and empInDb
       const hashesToCheck = [
         { hash: user.passwordHash, salt: user.salt },
         { hash: userInDb?.passwordHash, salt: userInDb?.salt },
@@ -933,6 +1190,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         }
       }
 
+      // 2. Direct & case-insensitive plaintext check against stored passwords
       if (!isValid) {
         const passwordsToCheck = [
           user.password,
@@ -942,7 +1200,8 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
           tenant?.customPassword,
           userInDb?.password,
           userInDb?.adminPassword,
-          empInDb?.password
+          empInDb?.password,
+          empInDb?.adminPassword
         ].filter(Boolean);
 
         for (const p of passwordsToCheck) {
@@ -956,7 +1215,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
 
       if (!isValid) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: 'Incorrect password' }));
+        res.end(JSON.stringify({ success: false, message: '❌ Incorrect password. Please enter the valid password created for your account.' }));
         return;
       }
 
@@ -980,7 +1239,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         // ENFORCE OTP FOR COMPANY ACCOUNTS
         const otp = String(Math.floor(100000 + Math.random() * 900000));
         const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
-
+        
         loginOtpStore.set(email.toLowerCase().trim(), {
           otp,
           expiresAt,
@@ -1017,11 +1276,11 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         tenantId: safeUser.companyId || safeUser.tenantId,
         company: tenant || { id: safeUser.companyId, name: safeUser.name },
         tenant: tenant || { id: safeUser.companyId, name: safeUser.name },
-        message: `Welcome back, Super Owner ${user.name}!` 
+        message: isSuper ? `Welcome back, Super Owner ${user.name}!` : `Welcome back, ${user.name}!` 
       }));
     } catch (err) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid request payload' }));
+      res.end(JSON.stringify({ error: 'Invalid request payload: ' + (err.message || '') }));
     }
     return;
   }
@@ -1151,6 +1410,24 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     const email = (decoded?.email || (isMockSuper ? 'priyanshupushkar263@gmail.com' : '')).toLowerCase().trim();
     const userId = decoded?.id;
 
+    // Reject if user email or company is in deleted companies blacklist
+    const isProfileDeleted = (db.deletedCompanies || []).some(d => {
+      if (!d) return false;
+      if (typeof d === 'string') return d.toLowerCase().trim() === email;
+      const dEmail = (d.email || '').toLowerCase().trim();
+      const dId = String(d.id || '').toLowerCase().trim();
+      if (email && (dEmail === email || (Array.isArray(d.emails) && d.emails.includes(email)))) return true;
+      if (decoded?.tenantId && dId === String(decoded.tenantId).toLowerCase().trim()) return true;
+      if (decoded?.companyId && dId === String(decoded.companyId).toLowerCase().trim()) return true;
+      return false;
+    });
+
+    if (isProfileDeleted) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: '❌ This company workspace has been permanently deleted by Super Owner. Access is revoked.' }));
+      return;
+    }
+
     // Check if Super Owner or Super Admin
     if (isMockSuper || (decoded && isSuperRoleOrEmail(decoded.role, decoded.email)) || email === 'priyanshupushkar263@gmail.com') {
       const foundSo = (db.superOwners || []).find(so => (so.email || '').toLowerCase().trim() === 'priyanshupushkar263@gmail.com');
@@ -1231,18 +1508,9 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       return;
     }
 
-    // Fallback using decoded token
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      id: userId || Date.now(),
-      name: decoded.name || 'User',
-      fullName: decoded.name || 'User',
-      email: email,
-      role: decoded.role || 'Employee',
-      avatar: (decoded.name || 'US').slice(0, 2).toUpperCase(),
-      photo: '',
-      documents: []
-    }));
+    // User account not found in database and not Super Owner -> Reject unauthorized
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'User account or company workspace not found. Please log in again.' }));
     return;
   }
 
@@ -1507,6 +1775,8 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         suite: tenantData.suite || 'unified',
         billingCycle: tenantData.billingCycle || 'monthly',
         status: tenantData.status || 'active',
+        subscriptionStatus: tenantData.subscriptionStatus || (tenantData.paidAt || tenantData.transactionId ? 'active' : 'unpaid'),
+        subscriptionPlanId: planKey,
         createdAt: tenantData.createdDate || new Date().toISOString(),
         expiresAt: tenantData.renewalDate || new Date(Date.now() + 30 * 86400000).toISOString(),
         adminName: adminName,
@@ -1586,6 +1856,10 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
           avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(adminName)}&background=4f46e5&color=fff`,
           joiningDate: new Date().toISOString().split('T')[0],
           employmentType: 'Full-Time Permanent',
+          password: adminPass,
+          adminPassword: adminPass,
+          passwordHash: uHash.hash,
+          salt: uHash.salt,
           documents: []
         };
         db.employees = [adminEmpObj, ...(db.employees || []).filter(e => (e.email || '').toLowerCase() !== adminEmail)];
@@ -1614,11 +1888,233 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     return;
   }
 
+  // 4.001 DELETE COMPANY API (/api/superowner/companies/:id, /api/companies/:id, /api/tenants/:id)
+  const isCompanyDelete = pathname.match(/^\/api\/(superowner\/|super-owner\/|admin\/)?(companies|tenants)\/([^/]+)$/);
+  if (isCompanyDelete && req.method === 'DELETE') {
+    try {
+      const compId = decodeURIComponent(isCompanyDelete[3]);
+      const db = readDb();
+      
+      const targetTenant = (db.tenants || []).find(t => 
+        String(t.id) === String(compId) || 
+        String(t.companyId) === String(compId) ||
+        (t.adminEmail && t.adminEmail.toLowerCase().trim() === String(compId).toLowerCase().trim()) ||
+        (t.email && t.email.toLowerCase().trim() === String(compId).toLowerCase().trim())
+      );
+
+      const tenantEmail = (targetTenant?.adminEmail || targetTenant?.email || '').toLowerCase().trim();
+      const compName = targetTenant?.name || targetTenant?.companyName || compId;
+
+      // Collect all associated emails from users & employees belonging to this company
+      const allAssociatedEmails = new Set();
+      if (tenantEmail) allAssociatedEmails.add(tenantEmail);
+      if (targetTenant?.companyEmail) allAssociatedEmails.add(String(targetTenant.companyEmail).toLowerCase().trim());
+      (db.users || []).forEach(u => {
+        if (String(u.tenantId) === String(compId) || String(u.companyId) === String(compId)) {
+          if (u.email) allAssociatedEmails.add(String(u.email).toLowerCase().trim());
+        }
+      });
+      (db.employees || []).forEach(e => {
+        if (String(e.tenantId) === String(compId) || String(e.companyId) === String(compId)) {
+          if (e.email) allAssociatedEmails.add(String(e.email).toLowerCase().trim());
+        }
+      });
+
+      // 1. Remove from db.tenants
+      db.tenants = (db.tenants || []).filter(t => 
+        String(t.id) !== String(compId) && 
+        String(t.companyId) !== String(compId) &&
+        !allAssociatedEmails.has((t.adminEmail || t.email || '').toLowerCase().trim())
+      );
+
+      // 2. Remove from db.users
+      db.users = (db.users || []).filter(u => 
+        String(u.tenantId) !== String(compId) && 
+        String(u.companyId) !== String(compId) &&
+        !allAssociatedEmails.has((u.email || '').toLowerCase().trim())
+      );
+
+      // 3. Remove from db.employees
+      db.employees = (db.employees || []).filter(e => 
+        String(e.tenantId) !== String(compId) && 
+        String(e.companyId) !== String(compId) &&
+        !allAssociatedEmails.has((e.email || '').toLowerCase().trim())
+      );
+
+      // 4. Add to permanent deletion blacklist in db.deletedCompanies
+      if (!Array.isArray(db.deletedCompanies)) db.deletedCompanies = [];
+      const emailList = Array.from(allAssociatedEmails);
+      const delItem = {
+        id: compId,
+        email: tenantEmail,
+        emails: emailList,
+        name: compName,
+        deletedAt: new Date().toISOString()
+      };
+      
+      // Ensure object and string identifiers are recorded
+      db.deletedCompanies.push(delItem);
+      if (!db.deletedCompanies.includes(compId.toLowerCase())) db.deletedCompanies.push(compId.toLowerCase());
+      emailList.forEach(em => {
+        if (!db.deletedCompanies.includes(em)) db.deletedCompanies.push(em);
+      });
+
+      // 5. Add audit log
+      if (!Array.isArray(db.auditLogs)) db.auditLogs = [];
+      db.auditLogs.unshift({
+        id: Date.now(),
+        action: "Company Deleted",
+        detail: `Company "${compName}" (${compId}) was permanently deleted by Super Owner. All accounts and access revoked.`,
+        actor: "Super Owner",
+        category: "company",
+        timestamp: new Date().toLocaleTimeString()
+      });
+
+      writeDb(db);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: `Company "${compName}" deleted successfully`, id: compId }));
+      return;
+    } catch (err) {
+      console.error('Failed to delete company:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to delete company: ' + err.message }));
+      return;
+    }
+  }
+
+  // 4.002 UPDATE COMPANY API (/api/superowner/companies/:id, /api/companies/:id, /api/tenants/:id)
+  if (isCompanyDelete && req.method === 'PUT') {
+    try {
+      const compId = decodeURIComponent(isCompanyDelete[3]);
+      const updates = await parseBody(req);
+      const db = readDb();
+      
+      const idx = (db.tenants || []).findIndex(t => 
+        String(t.id) === String(compId) || 
+        String(t.companyId) === String(compId) ||
+        (t.adminEmail && t.adminEmail.toLowerCase().trim() === String(compId).toLowerCase().trim())
+      );
+
+      if (idx !== -1) {
+        const existingTenant = db.tenants[idx];
+        const newPass = updates.customPassword || updates.password || updates.adminPassword;
+        const newEmail = (updates.email || updates.adminEmail || '').toLowerCase().trim();
+        const newName = updates.name || updates.companyName;
+
+        db.tenants[idx] = { 
+          ...existingTenant, 
+          ...updates, 
+          id: existingTenant.id,
+          bypassSubscription: updates.bypassSubscription !== undefined ? Boolean(updates.bypassSubscription) : Boolean(existingTenant.bypassSubscription),
+          subscriptionStatus: updates.bypassSubscription ? 'active' : (updates.subscriptionStatus || existingTenant.subscriptionStatus || 'active'),
+          status: updates.bypassSubscription ? 'active' : (updates.status || existingTenant.status || 'active'),
+          ...(newPass ? { password: newPass, adminPassword: newPass } : {}),
+          ...(newEmail ? { email: newEmail, adminEmail: newEmail } : {}),
+          ...(newName ? { name: newName, companyName: newName } : {})
+        };
+        
+        let pHash = null;
+        if (newPass) {
+          pHash = hashPassword(newPass);
+        }
+
+        // Also update matching users
+        db.users = (db.users || []).map(u => {
+          const isMatch = String(u.tenantId) === String(compId) || 
+                          String(u.companyId) === String(compId) || 
+                          (existingTenant.adminEmail && (u.email || '').toLowerCase().trim() === existingTenant.adminEmail.toLowerCase().trim()) ||
+                          (newEmail && (u.email || '').toLowerCase().trim() === newEmail);
+          if (isMatch) {
+            return { 
+              ...u, 
+              ...(updates.status ? { status: updates.status === 'active' ? 'Active' : 'Suspended' } : {}),
+              ...(newName ? { companyName: newName } : {}),
+              ...(newEmail && (u.role === 'Company Admin' || u.role === 'Admin') ? { email: newEmail } : {}),
+              ...(pHash ? { password: newPass, adminPassword: newPass, passwordHash: pHash.hash, salt: pHash.salt } : {})
+            };
+          }
+          return u;
+        });
+
+        // Also update matching employees
+        db.employees = (db.employees || []).map(e => {
+          const isMatch = String(e.tenantId) === String(compId) || 
+                          String(e.companyId) === String(compId) ||
+                          (existingTenant.adminEmail && (e.email || '').toLowerCase().trim() === existingTenant.adminEmail.toLowerCase().trim()) ||
+                          (newEmail && (e.email || '').toLowerCase().trim() === newEmail);
+          if (isMatch) {
+            return {
+              ...e,
+              ...(newName ? { companyName: newName } : {}),
+              ...(newEmail && (e.role === 'Company Admin' || e.systemRole === 'Company Admin') ? { email: newEmail } : {}),
+              ...(newPass && (e.role === 'Company Admin' || e.systemRole === 'Company Admin') ? { password: newPass } : {})
+            };
+          }
+          return e;
+        });
+        
+        writeDb(db);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, company: db.tenants[idx], tenant: db.tenants[idx] }));
+        return;
+      } else {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Company not found' }));
+        return;
+      }
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to update company: ' + err.message }));
+      return;
+    }
+  }
+
   // 4.01 COMPANY PROFILE API (/api/admin/company and /api/company)
   if ((pathname === '/api/admin/company' || pathname === '/api/company') && req.method === 'GET') {
     const db = readDb();
-    const compId = parsedUrl.searchParams.get('companyId') || parsedUrl.searchParams.get('tenantId') || req.headers['x-tenant-id'];
-    const tenant = (db.tenants || []).find(t => t.id === compId || (t.adminEmail && t.adminEmail.toLowerCase() === compId?.toLowerCase())) || (db.tenants || [])[0];
+    const decoded = verifyToken(req.headers['authorization']);
+    const tokenEmail = (decoded?.email || '').toLowerCase().trim();
+    const compId = parsedUrl.searchParams.get('companyId') || parsedUrl.searchParams.get('tenantId') || req.headers['x-tenant-id'] || decoded?.tenantId || decoded?.companyId;
+    let tenant = (db.tenants || []).find(t => 
+      (compId && (
+        String(t.id).toLowerCase() === String(compId).toLowerCase() || 
+        String(t.companyName || '').toLowerCase() === String(compId).toLowerCase() ||
+        (t.adminEmail && t.adminEmail.toLowerCase() === String(compId).toLowerCase()) ||
+        (t.email && t.email.toLowerCase() === String(compId).toLowerCase())
+      )) ||
+      (tokenEmail && (
+        (t.adminEmail && t.adminEmail.toLowerCase() === tokenEmail) ||
+        (t.email && t.email.toLowerCase() === tokenEmail)
+      ))
+    );
+    if (!tenant && compId) {
+      tenant = (db.tenants || []).find(t => t.id === compId || t.name === compId);
+    }
+    if (!tenant && tokenEmail) {
+      const associatedUser = (db.users || []).find(u => (u.email || '').toLowerCase() === tokenEmail);
+      const associatedEmp = (db.employees || []).find(e => (e.email || '').toLowerCase() === tokenEmail);
+      const linkedCompId = associatedUser?.tenantId || associatedUser?.companyId || associatedEmp?.tenantId || associatedEmp?.companyId;
+      if (linkedCompId) {
+        tenant = (db.tenants || []).find(t => String(t.id).toLowerCase() === String(linkedCompId).toLowerCase());
+      }
+    }
+    if (!tenant && !tokenEmail && !compId) {
+      tenant = (db.tenants || [])[0];
+    }
+    if (tenant) {
+      const isBypass = Boolean(tenant.bypassSubscription);
+      tenant = {
+        ...tenant,
+        status: isBypass ? 'active' : (tenant.status || 'active'),
+        subscriptionStatus: isBypass ? 'active' : (tenant.subscriptionStatus || (tenant.paidAt || tenant.lastPayment || tenant.transactionId ? 'active' : 'unpaid')),
+        subscriptionPlanId: tenant.subscriptionPlanId || tenant.planId || tenant.plan || 'starter',
+        planId: tenant.subscriptionPlanId || tenant.planId || tenant.plan || 'starter',
+        plan: tenant.subscriptionPlanId || tenant.planId || tenant.plan || 'starter',
+        bypassSubscription: isBypass,
+        seatLimit: Number(tenant.seatLimit || tenant.maxEmployees || tenant.staffCapacity || 100),
+        storageLimitGb: Number(tenant.storageLimitGb || tenant.storageLimit || 50)
+      };
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(tenant || {}));
     return;
@@ -1994,6 +2490,26 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       });
 
       if (found) {
+        // Also sync updated credentials and details to db.users
+        const empPassword = updateData.password ? String(updateData.password).trim() : null;
+        const pHash = empPassword ? hashPassword(empPassword) : null;
+        db.users = (db.users || []).map(u => {
+          if (
+            String(u.id) === String(empId) ||
+            (updateData.email && u.email?.toLowerCase() === updateData.email.toLowerCase())
+          ) {
+            return {
+              ...u,
+              name: updateData.name || updateData.fullName || u.name,
+              email: updateData.email || u.email,
+              role: updateData.role || u.role,
+              status: updateData.status === 'Terminated' || updateData.status === 'Inactive' ? 'Suspended' : 'Active',
+              ...(empPassword ? { password: empPassword, passwordHash: pHash.hash, salt: pHash.salt } : {})
+            };
+          }
+          return u;
+        });
+
         writeDb(db);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, message: 'Employee updated' }));
@@ -2562,10 +3078,25 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     return;
   }
 
+  if (pathname.match(/^\/api\/admin\/expenses\/[^/]+$/) && req.method === 'DELETE') {
+    try {
+      const expId = pathname.split('/').pop();
+      const db = readDb();
+      db.expenses = (db.expenses || []).filter(e => String(e.id) !== String(expId));
+      writeDb(db);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to delete expense' }));
+    }
+    return;
+  }
+
   // ========================================================
   // 4.26 HELPDESK SUPPORT TICKETS APIS
   // ========================================================
-  if ((pathname === '/api/admin/tickets' || pathname === '/api/employee/tickets') && req.method === 'GET') {
+  if ((pathname === '/api/admin/tickets' || pathname === '/api/employee/tickets' || pathname === '/api/superowner/tickets') && req.method === 'GET') {
     const db = readDb();
     const companyId = parsedUrl.searchParams.get('companyId') || req.headers['x-tenant-id'];
     let tickets = db.tickets || [];
@@ -2577,7 +3108,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     return;
   }
 
-  if ((pathname === '/api/admin/tickets' || pathname === '/api/employee/tickets') && req.method === 'POST') {
+  if ((pathname === '/api/admin/tickets' || pathname === '/api/employee/tickets' || pathname === '/api/superowner/tickets') && req.method === 'POST') {
     try {
       const data = await parseBody(req);
       const db = readDb();
@@ -2636,13 +3167,18 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       taskList = taskList.filter(t => t.companyId === companyId || t.tenantId === companyId);
     }
 
-    if (pathname === '/api/employee/tasks' && (empId || empEmail)) {
+    const empName = (parsedUrl.searchParams.get('employeeName') || '').toLowerCase().trim();
+    if (pathname === '/api/employee/tasks' && (empId || empEmail || empName)) {
       const emailLower = (empEmail || '').toLowerCase().trim();
-      taskList = taskList.filter(t => {
+      const filtered = taskList.filter(t => {
         const idMatches = empId && (String(t.assignedTo) === String(empId) || String(t.assignedToId) === String(empId));
         const emailMatches = emailLower && t.assignedToEmail && t.assignedToEmail.toLowerCase().trim() === emailLower;
-        return idMatches || emailMatches;
+        const nameMatches = empName && t.assignedToName && t.assignedToName.toLowerCase().trim() === empName;
+        return idMatches || emailMatches || nameMatches;
       });
+      if (filtered.length > 0) {
+        taskList = filtered;
+      }
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2968,6 +3504,18 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         }
         return a;
       });
+
+      // Also sync matching request in db.assetRequests
+      if (db.assetRequests) {
+        db.assetRequests = db.assetRequests.map(r => {
+          if (String(r.id) === String(astId)) {
+            const reqStatus = (data.status === 'Assigned' || data.status === 'Allocated') ? 'Approved' : (data.status === 'Rejected' ? 'Rejected' : data.status);
+            return { ...r, status: reqStatus, ...data };
+          }
+          return r;
+        });
+      }
+
       writeDb(db);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, asset: updated }));
@@ -3001,13 +3549,32 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         id: `ast_req_${Date.now()}`,
         requestedBy: data.requestedBy || 'Authorized Employee',
         assetType: data.assetType || data.name || 'Hardware',
-        reason: data.reason || 'Work requirement',
+        assetName: data.assetName || data.name || data.assetType || 'Device',
+        reason: data.reason || data.requestComment || 'Work requirement',
+        requestComment: data.requestComment || data.reason || 'Work requirement',
         status: 'Pending',
         requestedDate: new Date().toISOString().split('T')[0],
         companyId: data.companyId || req.headers['x-tenant-id'] || 'comp_1',
         ...data
       };
       db.assetRequests = [newReq, ...(db.assetRequests || [])];
+
+      // Also create record in db.assets so Admin Asset Management immediately displays it under requests
+      const newAsset = {
+        id: newReq.id,
+        assetName: newReq.assetName,
+        assetType: newReq.assetType,
+        employeeName: newReq.requestedBy,
+        assignedTo: newReq.requestedBy,
+        assignedName: newReq.requestedBy,
+        requestComment: newReq.requestComment,
+        status: 'Requested',
+        date: newReq.requestedDate,
+        companyId: newReq.companyId,
+        tenantId: newReq.companyId
+      };
+      db.assets = [newAsset, ...(db.assets || [])];
+
       writeDb(db);
       res.writeHead(201, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(newReq));
@@ -3752,6 +4319,75 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     return;
   }
 
+  // 6.5 PAYMENTS & INVOICES API (/api/superowner/payments, /api/payments, /api/payment/history, /api/admin/billing-history)
+  if ((pathname === '/api/superowner/payments' || pathname === '/api/payments' || pathname === '/api/payment/history' || pathname === '/api/admin/billing-history') && req.method === 'GET') {
+    const db = readDb();
+    const decoded = verifyToken(req.headers['authorization']);
+    const isSuper = isSuperRoleOrEmail(decoded?.role, decoded?.email);
+    let payments = db.payments || [];
+    if (!isSuper) {
+      const companyId = parsedUrl.searchParams.get('companyId') || decoded?.tenantId || decoded?.companyId;
+      const userEmail = (decoded?.email || '').toLowerCase().trim();
+      if (companyId) {
+        payments = payments.filter(p => String(p.companyId).toLowerCase() === String(companyId).toLowerCase());
+      } else if (userEmail) {
+        const t = (db.tenants || []).find(ten => (ten.adminEmail || ten.email || '').toLowerCase() === userEmail);
+        if (t) {
+          payments = payments.filter(p => String(p.companyId).toLowerCase() === String(t.id).toLowerCase());
+        }
+      }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(payments));
+    return;
+  }
+
+  if ((pathname === '/api/superowner/payments' || pathname === '/api/payments') && req.method === 'POST') {
+    try {
+      const payData = await parseBody(req);
+      const db = readDb();
+      if (!Array.isArray(db.payments)) db.payments = [];
+      
+      const newPay = {
+        id: payData.id || `pay_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        invoiceNumber: payData.invoiceNumber || `INV-${Date.now().toString().slice(-6)}`,
+        companyId: payData.companyId || 'comp_1',
+        companyName: payData.companyName || 'Enterprise Client',
+        amount: Number(payData.amount || 499),
+        currency: payData.currency || 'INR',
+        gateway: payData.gateway || 'razorpay',
+        status: payData.status || 'successful',
+        date: payData.date || new Date().toISOString().split('T')[0],
+        planId: payData.planId || 'starter',
+        planName: payData.planName || 'STARTER TIER',
+        paymentMethod: payData.paymentMethod || 'Razorpay Gateway UPI/Card',
+        transactionId: payData.transactionId || payData.razorpay_payment_id || `txn_${Date.now()}`
+      };
+
+      db.payments.unshift(newPay);
+
+      // Audit log
+      if (!Array.isArray(db.auditLogs)) db.auditLogs = [];
+      db.auditLogs.unshift({
+        id: Date.now(),
+        action: "Payment Received",
+        detail: `Received ${newPay.currency} ${newPay.amount} from "${newPay.companyName}" for ${newPay.planName} via ${newPay.gateway.toUpperCase()}.`,
+        actor: newPay.companyName,
+        category: "payment",
+        timestamp: new Date().toLocaleTimeString()
+      });
+
+      writeDb(db);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, payment: newPay }));
+      return;
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to record payment' }));
+      return;
+    }
+  }
+
   // 6.6 SUBSCRIPTION PLANS API (/api/superowner/plans, /api/auth/public-plans, /api/plans, /api/admin/plans)
   if ((pathname === '/api/superowner/plans' || pathname === '/api/auth/public-plans' || pathname === '/api/plans' || pathname === '/api/admin/plans') && req.method === 'GET') {
     const db = readDb();
@@ -4376,6 +5012,7 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
 
   // 7.001 PUBLIC PAYMENT CONFIGURATION (/api/payment/config)
   if (pathname === '/api/payment/config' && req.method === 'GET') {
+
     const { keyId } = getActiveRazorpayCredentials();
     const db = readDb();
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -4483,7 +5120,6 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       };
       db.payments.unshift(paymentRecord);
 
-      db.auditLogs = db.auditLogs || [];
       db.auditLogs.unshift({
         id: Date.now(),
         action: "Subscription Upgraded",
@@ -4507,60 +5143,6 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
       res.end(JSON.stringify({ error: err.message || 'Subscription activation failed' }));
     }
     return;
-  }
-
-  // 7.01 SUPEROWNER PAYMENTS API (/api/superowner/payments)
-  if ((pathname === '/api/superowner/payments' || pathname === '/api/payments') && req.method === 'GET') {
-    const db = readDb();
-    const payments = db.payments || [];
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(payments));
-    return;
-  }
-
-  if ((pathname === '/api/superowner/payments' || pathname === '/api/payments') && req.method === 'POST') {
-    try {
-      const payData = await parseBody(req);
-      const db = readDb();
-      if (!Array.isArray(db.payments)) db.payments = [];
-      
-      const newPay = {
-        id: payData.id || `pay_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-        invoiceNumber: payData.invoiceNumber || `INV-${Date.now().toString().slice(-6)}`,
-        companyId: payData.companyId || 'comp_1',
-        companyName: payData.companyName || 'Enterprise Client',
-        amount: Number(payData.amount || 499),
-        currency: payData.currency || 'INR',
-        gateway: payData.gateway || 'razorpay',
-        status: payData.status || 'successful',
-        date: payData.date || new Date().toISOString().split('T')[0],
-        planId: payData.planId || 'starter',
-        planName: payData.planName || 'STARTER TIER',
-        paymentMethod: payData.paymentMethod || 'Razorpay Gateway UPI/Card',
-        transactionId: payData.transactionId || payData.razorpay_payment_id || `txn_${Date.now()}`
-      };
-
-      db.payments.unshift(newPay);
-
-      if (!Array.isArray(db.auditLogs)) db.auditLogs = [];
-      db.auditLogs.unshift({
-        id: Date.now(),
-        action: "Payment Received",
-        detail: `Received ${newPay.currency} ${newPay.amount} from "${newPay.companyName}" for ${newPay.planName} via ${newPay.gateway.toUpperCase()}.`,
-        actor: newPay.companyName,
-        category: "payment",
-        timestamp: new Date().toLocaleTimeString()
-      });
-
-      writeDb(db);
-      res.writeHead(201, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, payment: newPay }));
-      return;
-    } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Failed to record payment' }));
-      return;
-    }
   }
 
   // 7.1 SUPEROWNER GLOBAL SETTINGS API (/api/superowner/settings)
@@ -4688,20 +5270,49 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
   // 9. FILE UPLOAD ENDPOINT (/api/upload)
   if (pathname === '/api/upload' && req.method === 'POST') {
     try {
-      const { fileName, base64Data } = await parseBody(req);
+      const { fileName, base64Data, companyId } = await parseBody(req);
       if (!base64Data) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Missing base64Data' }));
         return;
       }
 
+      const db = readDb();
+      const decoded = verifyToken(req.headers['authorization']);
+      const tokenEmail = (decoded?.email || '').toLowerCase().trim();
+      const compTarget = String(companyId || req.headers['x-tenant-id'] || decoded?.tenantId || decoded?.companyId || '').toLowerCase().trim();
+      const tenant = (db.tenants || []).find(t => 
+        (compTarget && (String(t.id).toLowerCase() === compTarget || String(t.adminEmail || '').toLowerCase() === compTarget)) ||
+        (tokenEmail && String(t.adminEmail || '').toLowerCase() === tokenEmail)
+      );
+
+      const storageLimitGb = Number(tenant?.storageLimitGb || tenant?.storageLimit || 50);
+      const storageLimitBytes = storageLimitGb * 1024 * 1024 * 1024;
+      const currentStorageBytes = Number(tenant?.storageUsedBytes || 0);
+
       const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
       const buffer = Buffer.from(cleanBase64, 'base64');
+
+      if (currentStorageBytes + buffer.length > storageLimitBytes) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: `Storage Limit Reached (${storageLimitGb} GB): Your organization has reached its plan storage capacity. Please upgrade your subscription to upload more files.`
+        }));
+        return;
+      }
+
       const ext = path.extname(fileName || 'file.png') || '.png';
       const secureFileName = `upload_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
       const filePath = path.join(UPLOADS_DIR, secureFileName);
 
       fs.writeFileSync(filePath, buffer);
+
+      if (tenant) {
+        tenant.storageUsedBytes = currentStorageBytes + buffer.length;
+        tenant.storageUsedGb = Number((tenant.storageUsedBytes / (1024 * 1024 * 1024)).toFixed(3));
+        writeDb(db);
+      }
 
       const fileUrl = `/uploads/${secureFileName}`;
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -4738,8 +5349,9 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
   }
 
   // 404 Fallback
+  console.warn(`⚠️ [404 Route Not Found] ${req.method} ${pathname}`);
   res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'API Route not found' }));
+  res.end(JSON.stringify({ error: 'API Route not found', method: req.method, path: pathname }));
 });
 
 server.listen(PORT, () => {
