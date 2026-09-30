@@ -1839,6 +1839,38 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     let emps = db.employees || [];
     if (companyId) {
       emps = emps.filter(e => e.tenantId === companyId || e.companyId === companyId);
+      if (emps.length === 0) {
+        const tenant = (db.tenants || []).find(t => 
+          t.id === companyId || 
+          t.companyId === companyId || 
+          (t.name && t.name.toLowerCase() === companyId.toLowerCase()) ||
+          (t.companyName && t.companyName.toLowerCase() === companyId.toLowerCase())
+        );
+        if (tenant) {
+          const adminEmp = {
+            id: Date.now(),
+            employeeId: 'EMP-001',
+            tenantId: tenant.id,
+            companyId: tenant.id,
+            name: tenant.adminName || tenant.ownerName || `${tenant.name || tenant.companyName || 'Company'} Admin`,
+            email: tenant.adminEmail || tenant.email,
+            role: 'Company Admin',
+            systemRole: 'Company Admin',
+            department: 'Management',
+            designation: 'Managing Director / Chief Admin',
+            status: 'Active',
+            phone: tenant.adminPhone || tenant.phone || '',
+            salary: '₹1,50,000',
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(tenant.adminName || tenant.name || 'Admin')}&background=4f46e5&color=fff`,
+            joiningDate: new Date().toISOString().split('T')[0],
+            employmentType: 'Full-Time Permanent',
+            documents: []
+          };
+          db.employees = [adminEmp, ...(db.employees || [])];
+          writeDb(db);
+          emps = [adminEmp];
+        }
+      }
     }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(emps));
