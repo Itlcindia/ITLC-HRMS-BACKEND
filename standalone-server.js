@@ -1007,6 +1007,13 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
     }
   }
 
+  // AUTH: LOGOUT
+  if ((pathname === '/api/auth/logout' || pathname === '/auth/logout') && req.method === 'POST') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, message: 'Logged out successfully' }));
+    return;
+  }
+
   // 3. AUTH: LOGIN
   if (pathname === '/api/auth/login' && req.method === 'POST') {
     try {
@@ -2552,13 +2559,30 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
   }
 
   // 4.2 ATTENDANCE API
-  if ((pathname.startsWith('/api/admin/attendance') || pathname === '/api/attendance') && req.method === 'GET') {
+  if ((pathname.startsWith('/api/admin/attendance') || pathname === '/api/attendance' || pathname === '/api/employee/attendance') && req.method === 'GET') {
     const db = readDb();
-    const companyId = parsedUrl.searchParams.get('companyId') || req.headers['x-tenant-id'];
+    const reqCompanyId = parsedUrl.searchParams.get('companyId') || req.headers['x-tenant-id'];
+    const decoded = verifyToken(req.headers['authorization']);
+    const empParam = parsedUrl.searchParams.get('employeeId') || parsedUrl.searchParams.get('empId');
     let att = db.attendance || [];
-    if (companyId) {
-      att = att.filter(a => a.companyId === companyId || a.tenantId === companyId);
+
+    // Filter by company/tenant if specified
+    if (reqCompanyId && reqCompanyId !== 'all') {
+      att = att.filter(a => {
+        if (!a.companyId && !a.tenantId) return true;
+        if (a.companyId === reqCompanyId || a.tenantId === reqCompanyId) return true;
+        if (db.tenants?.length === 1 && (reqCompanyId === db.tenants[0].id || a.companyId === db.tenants[0].id || a.companyId === 'comp_1' || a.companyId === 'TEN-ITLC-INDIA')) return true;
+        return false;
+      });
     }
+
+    // If requested specifically by an employee, filter by employeeId if provided
+    if (pathname === '/api/employee/attendance' && (empParam || decoded?.id)) {
+      const targetId = empParam || decoded?.id;
+      const filtered = att.filter(a => String(a.employeeId) === String(targetId) || (decoded?.name && a.employeeName === decoded.name));
+      if (filtered.length > 0) att = filtered;
+    }
+
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(att));
     return;
@@ -2575,7 +2599,17 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         (decoded?.id && String(e.id) === String(decoded.id))
       );
 
-      const compId = punchData.companyId || punchData.tenantId || tokenEmp?.companyId || tokenEmp?.tenantId || req.headers['x-tenant-id'] || 'comp_1';
+      let compId = punchData.companyId || punchData.tenantId || tokenEmp?.companyId || tokenEmp?.tenantId || decoded?.companyId || decoded?.tenantId || req.headers['x-tenant-id'];
+      if (!compId) {
+        const foundEmp = (db.employees || []).find(e => 
+          (punchData.employeeId && (String(e.id) === String(punchData.employeeId) || String(e.employeeId) === String(punchData.employeeId))) ||
+          (punchData.employeeName && e.name && e.name.toLowerCase().trim() === punchData.employeeName.toLowerCase().trim())
+        );
+        if (foundEmp) compId = foundEmp.companyId || foundEmp.tenantId;
+      }
+      if (!compId && db.tenants?.length > 0) compId = db.tenants[0].id;
+      if (!compId) compId = 'TEN-365';
+
       const targetEmpId = punchData.employeeId || tokenEmp?.employeeId || tokenEmp?.id || decoded?.id || 'EMP-001';
       const targetEmpName = punchData.employeeName || tokenEmp?.name || decoded?.name || 'Staff Member';
       const todayStr = punchData.date || new Date().toISOString().split('T')[0];
@@ -2630,7 +2664,17 @@ function isSuperRoleOrEmail(rawRole, rawEmail) {
         (decoded?.id && String(e.id) === String(decoded.id))
       );
 
-      const compId = punchData.companyId || punchData.tenantId || tokenEmp?.companyId || tokenEmp?.tenantId || req.headers['x-tenant-id'] || 'comp_1';
+      let compId = punchData.companyId || punchData.tenantId || tokenEmp?.companyId || tokenEmp?.tenantId || decoded?.companyId || decoded?.tenantId || req.headers['x-tenant-id'];
+      if (!compId) {
+        const foundEmp = (db.employees || []).find(e => 
+          (punchData.employeeId && (String(e.id) === String(punchData.employeeId) || String(e.employeeId) === String(punchData.employeeId))) ||
+          (punchData.employeeName && e.name && e.name.toLowerCase().trim() === punchData.employeeName.toLowerCase().trim())
+        );
+        if (foundEmp) compId = foundEmp.companyId || foundEmp.tenantId;
+      }
+      if (!compId && db.tenants?.length > 0) compId = db.tenants[0].id;
+      if (!compId) compId = 'TEN-365';
+
       const targetEmpId = punchData.employeeId || tokenEmp?.employeeId || tokenEmp?.id || decoded?.id;
       const targetEmpName = punchData.employeeName || tokenEmp?.name || decoded?.name;
       const todayStr = punchData.date || new Date().toISOString().split('T')[0];
